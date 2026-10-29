@@ -4,16 +4,12 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'">
   <meta name="color-scheme" content="light dark">
-  <title>software2</title>
+  <title>software(2);</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>software2</div>
     <div class="top-actions">
-      <button id="history-open" type="button" class="icon-button" title="History" aria-label="History">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
-      </button>
       <button id="settings-open" type="button" class="icon-button" title="Settings" aria-label="Settings">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.4-1.51 1z"/></svg>
       </button>
@@ -22,7 +18,8 @@
 
   <main>
     <div class="stage">
-      <h1 class="hero" id="hero">What do you want to build?</h1>
+      <h1 class="wordmark" aria-label="software(2);">software<span class="wordmark-accent">(2)</span><span class="wordmark-semi">;</span></h1>
+      <p class="hero" id="hero">What do you want to build?</p>
 
       <form id="request-form" class="composer">
         <textarea id="request" rows="3" spellcheck="true" placeholder="For example: a to-do list web page that remembers my tasks" aria-labelledby="hero" autofocus></textarea>
@@ -63,6 +60,7 @@
         <div class="actions">
           <button id="open-folder" type="button">Open folder</button>
           <button id="open-readme" type="button">Open README</button>
+          <button id="open-log" type="button" class="link">Open full log</button>
           <span class="spacer"></span>
           <button id="result-close" type="button" class="primary">Build something else</button>
         </div>
@@ -113,17 +111,6 @@
     </div>
 
     <p id="settings-saved" class="meta saved" aria-live="polite"></p>
-  </dialog>
-
-  <dialog id="history-drawer" class="drawer" aria-labelledby="history-title">
-    <div class="sheet-head">
-      <h2 id="history-title" tabindex="-1" autofocus>History</h2>
-      <button type="button" class="icon-button close" data-close aria-label="Close">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-      </button>
-    </div>
-    <p id="history-empty" class="meta">No builds yet.</p>
-    <ul id="history" class="history"></ul>
   </dialog>
 
   <dialog id="confirm-dialog" class="sheet" aria-labelledby="confirm-title">

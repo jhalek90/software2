@@ -8,7 +8,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runBuild } from '../dist/main/build.js';
-import { loadHistory } from '../dist/main/history.js';
 import { prepareProjectFolder } from '../dist/main/project.js';
 import { runClaude } from '../dist/main/runner.js';
 import { LOGS_DIR, LOGS_MAX, RunLog } from '../dist/main/runlog.js';
@@ -70,12 +69,11 @@ test('a stream line carries the activity of its last block; results and init too
   assert.equal(parseStreamLine(result, folder).activity, undefined, 'tool results do not change the line');
 });
 
-test('a build reports what it is doing and keeps its log file in the history entry', async () => {
+test('a build reports what it is doing and passes its log file on in the outcome', async () => {
   const dir = path.join(tmp, 'build1');
   assert.deepEqual(await prepareProjectFolder(dir), { ok: true });
-  const historyDir = path.join(tmp, 'hist1');
   const activities = [];
-  const runLog = new RunLog(historyDir);
+  const runLog = new RunLog(path.join(tmp, 'data1'));
   const entry = await runBuild(
     {
       request: 'x',
@@ -87,7 +85,6 @@ test('a build reports what it is doing and keeps its log file in the history ent
       log: (kind, text) => runLog.write(kind, text),
       setStatus: () => {},
       startRun: (opts) => runClaude(opts).done,
-      historyDir,
       onActivity: (text) => activities.push(text),
       logFile: runLog.file,
     },
@@ -101,7 +98,6 @@ test('a build reports what it is doing and keeps its log file in the history ent
     'Built a README (fake).',
   ]);
   assert.equal(entry.logFile, runLog.file);
-  assert.equal(loadHistory(historyDir)[0].logFile, runLog.file);
   const text = readFileSync(runLog.file, 'utf8');
   assert.match(text, /tool +Write README\.md/);
   assert.match(text, /Build done after/);

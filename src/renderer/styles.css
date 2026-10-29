@@ -5,6 +5,7 @@
   --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --mono: "Cascadia Mono", Consolas, monospace;
+  --code: "Cascadia Code", Consolas, monospace;
 
   --bg: #f3f3f3;
   --surface: #ffffff;
@@ -136,15 +137,8 @@ button.link:hover { text-decoration: underline; background: none; }
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 10px 14px 0 20px;
-}
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; color: var(--text-2); }
-.brand-mark {
-  width: 16px;
-  height: 16px;
-  border-radius: 5px;
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 45%, #a46cff));
 }
 .top-actions { display: flex; gap: 4px; }
 
@@ -166,12 +160,19 @@ main {
   flex-direction: column;
   gap: 16px;
 }
+.wordmark {
+  text-align: center;
+  font: 600 52px/1.1 var(--code);
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.wordmark-accent { color: var(--accent); }
+.wordmark-semi { color: var(--text-3); }
 .hero {
   text-align: center;
-  font-size: 30px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin-bottom: 10px;
+  font: 500 18px/1.4 var(--font-display);
+  color: var(--text-2);
+  margin: -6px 0 8px;
 }
 
 .composer {
@@ -329,8 +330,9 @@ main {
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
 .actions.end { justify-content: flex-end; }
 .spacer { flex: 1; }
+.actions .link { margin-left: 8px; font-size: 13px; }
 
-/* Dialogs: sheets (Settings, confirm, failed) and the History drawer */
+/* Dialogs: sheets (Settings, confirm, failed) */
 
 dialog {
   padding: 0;
@@ -362,19 +364,6 @@ dialog[open]::backdrop { background: var(--backdrop); }
 }
 @starting-style { .sheet[open] { transform: translateY(10px) scale(0.98); } }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin: -4px -8px 8px 0; }
-
-.drawer {
-  margin: 0 0 0 auto;
-  width: min(420px, 92vw);
-  height: 100vh;
-  max-height: 100vh;
-  border-width: 0 0 0 1px;
-  border-radius: 0;
-  padding: 18px 18px 18px 22px;
-  overflow: auto;
-  transform: translateX(40px);
-}
-@starting-style { .drawer[open] { transform: translateX(40px); } }
 
 /* Confirm */
 
@@ -458,47 +447,6 @@ label.check input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: va
 label.check code { display: block; margin-top: 2px; font-weight: 400; color: var(--text-3); }
 .note { margin-top: 10px; color: var(--text-2); font-size: 13px; }
 .saved { margin-top: 16px; min-height: 1.4em; }
-
-/* History */
-
-.history { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.history li {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 4px 6px 4px 4px;
-  border-radius: 10px;
-  transition: background-color 0.15s;
-}
-.history li:hover { background: var(--hover); }
-.history-item {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 6px 8px;
-  border: none;
-  background: transparent;
-  text-align: left;
-}
-.history-item:hover { background: transparent; }
-.history-request { max-width: 100%; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.history-meta { color: var(--text-3); font-size: 12px; font-weight: 400; }
-.history-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-top: 8px; }
-.history-side .link { font-size: 12px; }
-.badge {
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 600;
-  background: var(--surface-2);
-  color: var(--text-2);
-}
-.badge.done { background: var(--ok-soft); color: var(--ok); }
-.badge.failed, .badge.timed-out { background: var(--bad-soft); color: var(--bad); }
-.badge.stopped { background: var(--warn-soft); color: var(--warn); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after, ::backdrop { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

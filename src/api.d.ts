@@ -2,6 +2,9 @@
 // A global declaration file, so the renderer can stay a plain script (no imports).
 
 type Settings = import('./main/settings').Settings;
+type Estimate = import('./main/estimate').Estimate;
+type EstimateOutcome = import('./main/estimate').EstimateOutcome;
+type ConfirmOutcome = import('./main/flow').ConfirmOutcome;
 
 interface LogEntry {
   kind: 'info' | 'error' | 'stdout' | 'stderr';
@@ -14,7 +17,11 @@ interface Software2Api {
   detectClaude(): Promise<string | null>;
   pickClaude(): Promise<string | null>;
   pickFolder(current: string): Promise<string | null>;
-  go(request: string): Promise<void>;
+  /** Step 1 of Go. On ok, call confirm() ("Build it") or cancel(). */
+  estimate(request: string): Promise<EstimateOutcome>;
+  /** Folder dialog, git init, then the build. */
+  confirm(): Promise<ConfirmOutcome>;
+  cancel(): Promise<void>;
   stop(): Promise<void>;
   onLog(listener: (entry: LogEntry) => void): void;
   onStatus(listener: (status: string) => void): void;

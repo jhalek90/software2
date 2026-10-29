@@ -1,7 +1,10 @@
 // Electron main process: one window, settings and the Go/Stop plumbing.
 
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { runBuild } from './build';
+import { Flow } from './flow';
 import { runClaude, type RunHandle, type RunOptions, type RunResult } from './runner';
 import { findOnPath, loadSettings, saveSettings, type Settings } from './settings';
 
@@ -19,7 +22,7 @@ function setStatus(status: string): void {
 }
 
 /** Runs the CLI with its output streamed into the window's log. Only one run at a
- *  time. The estimate (#344) and build (#345) steps go through here. */
+ *  time. The build step (#345) goes through here; the estimate runs from flow.ts. */
 export function startRun(opts: Omit<RunOptions, 'onStdout' | 'onStderr'>): Promise<RunResult> {
   if (currentRun) return Promise.reject(new Error('Something is already running.'));
   const run = runClaude({
@@ -80,19 +83,42 @@ ipcMain.handle('dialog:pickFolder', async (_e, current: string) => {
   return res.canceled ? null : res.filePaths[0];
 });
 
-ipcMain.handle('app:go', (_e, request: string) => {
-  const text = String(request ?? '').trim();
-  if (!text) {
-    log('error', 'Type what you want first.');
-    return;
-  }
-  // The estimate and build steps come in the next tasks (#344, #345).
-  log('info', `Request: ${text}`);
-  log('info', 'Estimating and building are not wired up yet.');
-  setStatus('Ready');
+const flow = new Flow({
+  settings: () => loadSettings(settingsDir()),
+  log,
+  setStatus,
+  pickFolder: async (defaultPath) => {
+    try {
+      mkdirSync(defaultPath, { recursive: true });
+    } catch {
+      // The dialog then opens wherever Windows likes.
+    }
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Pick or create a new, empty folder for the project',
+      defaultPath,
+      buttonLabel: 'Use this folder',
+      properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
+    });
+    return res.canceled ? null : res.filePaths[0];
+  },
+  refuseFolder: async (message) => {
+    await dialog.showMessageBox(win!, {
+      type: 'warning',
+      title: 'Choose another folder',
+      message: 'This folder cannot be used for a new project',
+      detail: message,
+      buttons: ['Pick again'],
+    });
+  },
+  build: (job) => runBuild(job, { log, setStatus, startRun }),
 });
 
+ipcMain.handle('app:estimate', (_e, request: string) => flow.estimate(String(request ?? '')));
+ipcMain.handle('app:confirm', () => flow.confirm());
+ipcMain.handle('app:cancel', () => flow.cancel());
+
 ipcMain.handle('app:stop', () => {
+  flow.stop();
   if (currentRun) {
     currentRun.stop();
     log('info', 'Stopping...');
@@ -107,6 +133,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  flow.stop();
   currentRun?.stop();
   app.quit();
 });

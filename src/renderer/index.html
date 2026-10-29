@@ -51,13 +51,48 @@
       </div>
     </form>
 
-    <p id="status" aria-live="polite">Ready</p>
+    <p id="status"><span id="spinner" class="spinner" hidden></span><span id="status-text" aria-live="polite">Ready</span> <span id="elapsed" class="muted-inline"></span></p>
     <div class="log-head">
       <span>Log</span>
       <button id="clear-log" type="button" class="link">Clear</button>
     </div>
     <pre id="log"></pre>
   </main>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">Build this?</h2>
+      <p id="confirm-summary" class="summary"></p>
+      <p class="facts"><strong id="confirm-minutes"></strong> <span id="confirm-stack"></span></p>
+      <h3>Steps</h3>
+      <ol id="confirm-steps"></ol>
+      <div id="confirm-risks-box">
+        <h3>Risks</h3>
+        <ul id="confirm-risks"></ul>
+      </div>
+      <p id="confirm-cap" class="muted"></p>
+      <p id="confirm-warning" class="warning-line" hidden>Claude will build without asking permission and can run any command on this PC.</p>
+      <div class="actions">
+        <button type="submit" value="build" class="primary" autofocus>Build it</button>
+        <button type="submit" value="cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="failed-dialog" aria-labelledby="failed-title">
+    <form method="dialog">
+      <h2 id="failed-title">No estimate</h2>
+      <p id="failed-message"></p>
+      <div id="failed-raw-box">
+        <h3>What Claude said</h3>
+        <pre id="failed-raw"></pre>
+      </div>
+      <div class="actions">
+        <button type="submit" value="retry" class="primary" autofocus>Retry</button>
+        <button type="submit" value="close">Close</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="renderer.js"></script>
 </body>

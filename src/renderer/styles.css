@@ -74,7 +74,48 @@ textarea {
 .actions { display: flex; gap: 8px; margin-top: 10px; }
 .actions .primary { padding: 8px 28px; font-size: 16px; }
 
-#status { margin: 14px 0 8px; font-weight: 500; }
+#status { display: flex; align-items: center; gap: 8px; margin: 14px 0 8px; font-weight: 500; }
+.muted-inline { color: #6b6a64; font-weight: 400; }
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #c9c8c0;
+  border-top-color: #2d5be3;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.spinner[hidden] { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+dialog {
+  width: min(620px, 90vw);
+  max-height: 85vh;
+  overflow: auto;
+  padding: 20px 24px;
+  border: 1px solid #b9b8b0;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+}
+dialog::backdrop { background: rgba(20, 20, 18, 0.35); }
+dialog h3 { margin: 14px 0 4px; font-size: 13px; font-weight: 600; color: #6b6a64; }
+dialog ol, dialog ul { margin: 0; padding-left: 22px; }
+dialog .summary { font-size: 16px; margin: 0 0 8px; }
+dialog .facts { margin: 0; }
+dialog .actions { margin-top: 18px; }
+.warning-line { margin: 8px 0 0; color: #a3370f; }
+#failed-raw {
+  max-height: 240px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.45 Consolas, monospace;
+  background: #f1f0eb;
+  border-radius: 6px;
+}
 
 .log-head { display: flex; justify-content: space-between; color: #6b6a64; margin-bottom: 4px; }
 

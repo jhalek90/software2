@@ -8,6 +8,8 @@
 //   -p ... --output-format stream-json   JSON lines: system init, assistant text, result
 //   -p ... (text, the default)       the result text
 // The prompt is read from stdin (or taken from the argument after -p).
+// For an estimate prompt (it contains "software2 estimate") the default result is a
+// valid estimate JSON, so the app can be tried end to end.
 //
 // Environment, for test scenarios:
 //   FAKE_CLAUDE_MODE        normal (default) | fail | hang | hang-with-child
@@ -66,7 +68,16 @@ async function main() {
   const prompt = pArg && !pArg.startsWith('-') ? pArg : await readStdin();
   const format = value('--output-format') || 'text';
   const sessionId = '00000000-0000-4000-8000-000000000000';
-  const result = env.FAKE_CLAUDE_RESULT ?? `Fake answer to: ${prompt.trim().slice(0, 80)}`;
+  const cannedEstimate = JSON.stringify({
+    minutes: 2,
+    summary: 'A fake build that writes a README, for trying software2 without Claude.',
+    stack: 'Plain text',
+    steps: ['Write README.md', 'Commit it'],
+    risks: ['Nothing real gets built'],
+  });
+  const result =
+    env.FAKE_CLAUDE_RESULT ??
+    (prompt.includes('software2 estimate') ? cannedEstimate : `Fake answer to: ${prompt.trim().slice(0, 80)}`);
 
   if (mode === 'fail') {
     await sleep(delayMs);
@@ -105,6 +116,8 @@ async function main() {
     session_id: sessionId,
     total_cost_usd: 0,
   };
+  // Not in the real CLI either: what the json-mode call looked like.
+  const finalWithFake = { ...final, fake: { args, cwd: process.cwd(), promptLength: prompt.length } };
 
   if (mode === 'hang' || mode === 'hang-with-child') {
     await out(format === 'stream-json' ? JSON.stringify(init) : 'fake-claude: hanging');
@@ -117,7 +130,7 @@ async function main() {
     await out(JSON.stringify(assistant));
     await out(JSON.stringify(final));
   } else if (format === 'json') {
-    await out(JSON.stringify(final));
+    await out(JSON.stringify(finalWithFake));
   } else {
     await out(result);
   }

@@ -21,6 +21,28 @@ for that build under Advanced.
 | --- | --- |
 | ![The start page](docs/screenshots/light-empty.png) | ![The start page, dark](docs/screenshots/dark-empty.png) |
 
+## Open it
+
+Once, in the project folder after `npm install`:
+
+```
+npm run shortcut
+```
+
+puts a **software(2);** shortcut with the app icon on your Desktop (running it again
+replaces it). Double-click it to open the app: it builds quietly, starts Electron's own
+exe on its own and leaves no terminal window, so nothing closes the app but the app.
+If the build fails, a message box shows where the log is
+(`%TEMP%\software2-launch.log`).
+
+From a terminal, `npm run launch` does the same: it builds (output in the terminal),
+starts the app detached and returns, so closing the terminal leaves the app open.
+`npm start` is for development: the app stays tied to that terminal (see "Run it in
+dev").
+
+The shortcut runs `scripts\launch.vbs` through `wscript.exe`, which runs
+`scripts\launch.mjs` with Node in a hidden window. Node must be on PATH.
+
 ## How to use it
 
 1. Finish the sentence "build me ...", for example "a to-do list web page", and press
@@ -135,7 +157,9 @@ npm install
 npm start
 ```
 
-`npm start` compiles the TypeScript into `dist/` and opens the window. If Electron
+`npm start` compiles the TypeScript into `dist/` and opens the window, tied to that
+terminal: closing the terminal closes the app (use `npm run launch` or the shortcut to
+avoid that). If Electron
 says it failed to install correctly, its download step was skipped; run
 `node node_modules/electron/install.js` once.
 
@@ -201,6 +225,9 @@ test/*.test.mjs         tests (run against the compiled dist/)
 docs/screenshots/       screenshots from the demo mode
 assets/                 the app icon: icon.svg, rendered to icon.png and icon.ico
 scripts/make-icon.mjs   renders the icon (run it with Electron, see the file)
+scripts/launch.mjs      npm run launch: build, then start Electron detached and exit
+scripts/launch.vbs      the desktop shortcut's target: runs launch.mjs hidden
+scripts/shortcut.mjs    npm run shortcut: the Desktop shortcut
 ```
 
 ## Build a Windows exe (later)

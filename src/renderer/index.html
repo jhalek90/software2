@@ -3,109 +3,155 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'">
+  <meta name="color-scheme" content="light dark">
   <title>software2</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <h1>software2</h1>
-    <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings">Settings</button>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>software2</div>
+    <div class="top-actions">
+      <button id="history-open" type="button" class="icon-button" title="History" aria-label="History">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+      </button>
+      <button id="settings-open" type="button" class="icon-button" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.4-1.51 1z"/></svg>
+      </button>
+    </div>
   </header>
 
-  <section id="settings" hidden>
-    <h2>Settings</h2>
-
-    <label for="claude-path">Claude CLI</label>
-    <div class="row">
-      <input id="claude-path" type="text" spellcheck="false" placeholder="Not found on PATH">
-      <button id="claude-detect" type="button">Detect</button>
-      <button id="claude-browse" type="button">Browse...</button>
-    </div>
-
-    <label for="projects-folder">Default folder for new projects</label>
-    <div class="row">
-      <input id="projects-folder" type="text" spellcheck="false">
-      <button id="projects-browse" type="button">Browse...</button>
-    </div>
-
-    <label for="build-cap">Build time cap (minutes)</label>
-    <div class="row">
-      <input id="build-cap" type="number" min="1" max="1440" step="1">
-    </div>
-
-    <label class="check">
-      <input id="skip-permissions" type="checkbox">
-      Let Claude build without asking permission (--dangerously-skip-permissions)
-    </label>
-    <p class="warning">Claude can then run any command on this PC, in and outside the project folder. Only use this for requests you trust.</p>
-    <p class="note">When it is off, Claude can edit files in the project folder and run only <span class="allowed-commands">npm, node, python, dotnet and git</span>. Any other command fails, without a prompt for you to answer, so some builds may not finish.</p>
-
-    <p id="settings-saved" class="muted" aria-live="polite"></p>
-  </section>
-
   <main>
-    <form id="request-form">
-      <textarea id="request" rows="4" placeholder="What software do you want?" aria-label="What software do you want?" autofocus></textarea>
-      <div class="actions">
-        <button id="go" type="submit" class="primary">Go</button>
-        <button id="stop" type="button">Stop</button>
-      </div>
-    </form>
+    <div class="stage">
+      <h1 class="hero" id="hero">What do you want to build?</h1>
 
-    <p id="status"><span id="spinner" class="spinner" hidden></span><span id="status-text" aria-live="polite">Ready</span> <span id="elapsed" class="muted-inline"></span></p>
+      <form id="request-form" class="composer">
+        <textarea id="request" rows="3" spellcheck="true" placeholder="For example: a to-do list web page that remembers my tasks" aria-labelledby="hero" autofocus></textarea>
+        <div class="composer-foot">
+          <span class="hint"><kbd>Enter</kbd> to go, <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>
+          <button id="go" type="submit" class="primary go">
+            Go
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+      </form>
 
-    <section id="result" hidden aria-labelledby="result-title">
-      <div class="result-head">
-        <h2 id="result-title"></h2>
-        <span id="result-meta" class="muted-inline"></span>
-        <button id="result-close" type="button" class="link">Close</button>
+      <div id="status" class="status" hidden>
+        <div class="status-row">
+          <span id="spinner" class="spinner" aria-hidden="true"></span>
+          <span id="status-text" class="status-text" aria-live="polite"></span>
+          <span id="elapsed" class="status-time"></span>
+          <button id="stop" type="button" class="subtle small">Stop</button>
+        </div>
+        <div class="progress" aria-hidden="true"><div id="progress-bar" class="progress-bar"></div></div>
       </div>
-      <p id="result-request" class="result-request"></p>
-      <p id="result-folder" class="muted-inline"></p>
-      <pre id="result-summary"></pre>
-      <h3>Commits</h3>
-      <ol id="result-commits"></ol>
-      <div class="actions">
-        <button id="open-folder" type="button">Open folder</button>
-        <button id="open-readme" type="button">Open README</button>
-      </div>
-    </section>
 
-    <div class="log-head">
-      <span>Log</span>
-      <button id="clear-log" type="button" class="link">Clear</button>
+      <p id="notice" class="notice" role="status" hidden></p>
+
+      <section id="result" class="card result" hidden aria-labelledby="result-title">
+        <div class="result-head">
+          <span id="result-icon" class="result-icon" aria-hidden="true"></span>
+          <div class="result-titles">
+            <h2 id="result-title"></h2>
+            <p id="result-meta" class="meta"></p>
+          </div>
+        </div>
+        <p id="result-request" class="result-request"></p>
+        <div id="result-summary" class="result-summary"></div>
+        <h3>Commits</h3>
+        <ol id="result-commits" class="commits"></ol>
+        <p id="result-folder" class="meta path"></p>
+        <div class="actions">
+          <button id="open-folder" type="button">Open folder</button>
+          <button id="open-readme" type="button">Open README</button>
+          <span class="spacer"></span>
+          <button id="result-close" type="button" class="primary">Build something else</button>
+        </div>
+      </section>
     </div>
-    <pre id="log"></pre>
-
-    <details id="history-box">
-      <summary>History</summary>
-      <p id="history-empty" class="muted">No builds yet.</p>
-      <ul id="history"></ul>
-    </details>
   </main>
 
-  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+  <dialog id="settings-dialog" class="sheet" aria-labelledby="settings-title">
+    <div class="sheet-head">
+      <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
+      <button type="button" class="icon-button close" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="field">
+      <label for="claude-path">Claude CLI</label>
+      <div class="row">
+        <input id="claude-path" type="text" spellcheck="false" placeholder="Not found on PATH">
+        <button id="claude-detect" type="button">Detect</button>
+        <button id="claude-browse" type="button">Browse...</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="projects-folder">Default folder for new projects</label>
+      <div class="row">
+        <input id="projects-folder" type="text" spellcheck="false">
+        <button id="projects-browse" type="button">Browse...</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="build-cap">Build time cap</label>
+      <div class="row narrow">
+        <input id="build-cap" type="number" min="1" max="1440" step="1">
+        <span class="unit">minutes</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="check">
+        <input id="skip-permissions" type="checkbox">
+        <span>Let Claude build without asking permission <code>--dangerously-skip-permissions</code></span>
+      </label>
+      <p class="callout warn">Claude can then run any command on this PC, in and outside the project folder. Only use this for requests you trust.</p>
+      <p class="note">When it is off, Claude can edit files in the project folder and run only <span class="allowed-commands">npm, node, python, dotnet and git</span>. Any other command fails, without a prompt for you to answer, so some builds may not finish.</p>
+    </div>
+
+    <p id="settings-saved" class="meta saved" aria-live="polite"></p>
+  </dialog>
+
+  <dialog id="history-drawer" class="drawer" aria-labelledby="history-title">
+    <div class="sheet-head">
+      <h2 id="history-title" tabindex="-1" autofocus>History</h2>
+      <button type="button" class="icon-button close" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <p id="history-empty" class="meta">No builds yet.</p>
+    <ul id="history" class="history"></ul>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="sheet" aria-labelledby="confirm-title">
     <form method="dialog">
+      <p class="eyebrow">Estimate</p>
       <h2 id="confirm-title">Build this?</h2>
       <p id="confirm-summary" class="summary"></p>
-      <p class="facts"><strong id="confirm-minutes"></strong> <span id="confirm-stack"></span></p>
+      <div class="chips">
+        <span id="confirm-minutes" class="chip accent"></span>
+        <span id="confirm-stack" class="chip"></span>
+      </div>
       <h3>Steps</h3>
-      <ol id="confirm-steps"></ol>
+      <ol id="confirm-steps" class="steps"></ol>
       <div id="confirm-risks-box">
         <h3>Risks</h3>
-        <ul id="confirm-risks"></ul>
+        <ul id="confirm-risks" class="risks"></ul>
       </div>
-      <p id="confirm-cap" class="muted"></p>
-      <p id="confirm-warning" class="warning-line" hidden>Claude will build without asking permission and can run any command on this PC.</p>
-      <p id="confirm-limited" class="warning-line" hidden>Claude can edit files in the project folder and run only <span class="allowed-commands"></span>. Commands outside that list fail without a prompt for you to answer.</p>
-      <div class="actions">
-        <button type="submit" value="build" class="primary" autofocus>Build it</button>
+      <p id="confirm-cap" class="meta"></p>
+      <p id="confirm-warning" class="callout warn" hidden>Claude will build without asking permission and can run any command on this PC.</p>
+      <p id="confirm-limited" class="callout" hidden>Claude can edit files in the project folder and run only <span class="allowed-commands"></span>. Commands outside that list fail without a prompt for you to answer.</p>
+      <div class="actions end">
         <button type="submit" value="cancel">Cancel</button>
+        <button type="submit" value="build" class="primary" autofocus>Build it</button>
       </div>
     </form>
   </dialog>
 
-  <dialog id="failed-dialog" aria-labelledby="failed-title">
+  <dialog id="failed-dialog" class="sheet" aria-labelledby="failed-title">
     <form method="dialog">
       <h2 id="failed-title">No estimate</h2>
       <p id="failed-message"></p>
@@ -113,9 +159,9 @@
         <h3>What Claude said</h3>
         <pre id="failed-raw"></pre>
       </div>
-      <div class="actions">
-        <button type="submit" value="retry" class="primary" autofocus>Retry</button>
+      <div class="actions end">
         <button type="submit" value="close">Close</button>
+        <button type="submit" value="retry" class="primary" autofocus>Retry</button>
       </div>
     </form>
   </dialog>

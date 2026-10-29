@@ -24,6 +24,8 @@ export interface HistoryEntry {
   estimateMinutes: number;
   commits: Commit[];
   hasReadme: boolean;
+  /** The run's full log (estimate and build), in the app's logs folder. */
+  logFile?: string;
 }
 
 export const HISTORY_FILE = 'history.json';

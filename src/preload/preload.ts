@@ -16,11 +16,15 @@ const api: Software2Api = {
   getHistory: () => ipcRenderer.invoke('history:list'),
   openFolder: (id) => ipcRenderer.invoke('history:openFolder', id),
   openReadme: (id) => ipcRenderer.invoke('history:openReadme', id),
+  openLog: (id) => ipcRenderer.invoke('history:openLog', id),
   onLog: (listener) => {
     ipcRenderer.on('log', (_e, entry: LogEntry) => listener(entry));
   },
   onStatus: (listener) => {
     ipcRenderer.on('status', (_e, status: string) => listener(status));
+  },
+  onActivity: (listener) => {
+    ipcRenderer.on('activity', (_e, text: string) => listener(text));
   },
   onBuild: (listener) => {
     ipcRenderer.on('build', (_e, event: BuildEvent) => listener(event));

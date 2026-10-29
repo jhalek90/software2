@@ -1,23 +1,35 @@
 // Electron main process: one window, settings and the Go/Stop plumbing.
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
-import { mkdirSync } from 'node:fs';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { ALLOWED_COMMANDS, runBuild, type BuildEvent } from './build';
+import { DEMO, demoFolder, setupDemo, takeShots } from './demo';
 import { Flow } from './flow';
 import { loadHistory } from './history';
+import { RunLog } from './runlog';
 import { runClaude, type RunHandle, type RunOptions, type RunResult } from './runner';
 import { findOnPath, loadSettings, saveSettings, type Settings } from './settings';
+
+setupDemo();
 
 let win: BrowserWindow | null = null;
 let currentRun: RunHandle | null = null;
 /** The build in progress, so quitting can wait for it to be stopped and saved. */
 let currentBuild: Promise<unknown> | null = null;
+/** The full log of the current run (an estimate and its build), one file per Go. */
+let runLog: RunLog | null = null;
 
 const settingsDir = () => app.getPath('userData');
 
+/** Everything goes to the run's log file; the window only shows errors (see the renderer). */
 function log(kind: LogEntry['kind'], text: string): void {
+  runLog?.write(kind, text);
   win?.webContents.send('log', { kind, text } satisfies LogEntry);
+}
+
+function setActivity(text: string): void {
+  win?.webContents.send('activity', text);
 }
 
 function setStatus(status: string): void {
@@ -50,7 +62,7 @@ function createWindow(): void {
     minWidth: 600,
     minHeight: 480,
     title: 'software2',
-    backgroundColor: '#f6f6f4',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#202020' : '#f3f3f3',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
@@ -60,6 +72,10 @@ function createWindow(): void {
     },
   });
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  if (DEMO) win.setTitle('software2 (demo: fake Claude)');
+  win.webContents.once('did-finish-load', () => {
+    if (win) takeShots(win);
+  });
   win.on('closed', () => {
     win = null;
   });
@@ -95,6 +111,7 @@ const flow = new Flow({
   log,
   setStatus,
   pickFolder: async (defaultPath) => {
+    if (DEMO) return demoFolder();
     try {
       mkdirSync(defaultPath, { recursive: true });
     } catch {
@@ -118,7 +135,15 @@ const flow = new Flow({
     });
   },
   build: async (job) => {
-    const build = runBuild(job, { log, setStatus, startRun, historyDir: settingsDir(), onEvent: sendBuild });
+    const build = runBuild(job, {
+      log,
+      setStatus,
+      startRun,
+      historyDir: settingsDir(),
+      onEvent: sendBuild,
+      onActivity: setActivity,
+      logFile: runLog?.file,
+    });
     currentBuild = build;
     try {
       await build;
@@ -128,7 +153,17 @@ const flow = new Flow({
   },
 });
 
-ipcMain.handle('app:estimate', (_e, request: string) => flow.estimate(String(request ?? '')));
+ipcMain.handle('app:estimate', (_e, request: string) => {
+  const text = String(request ?? '');
+  if (text.trim() && !flow.busy) {
+    try {
+      runLog = new RunLog(settingsDir());
+    } catch {
+      runLog = null; // No log file then; the run itself still works.
+    }
+  }
+  return flow.estimate(text);
+});
 ipcMain.handle('app:confirm', () => flow.confirm());
 ipcMain.handle('app:cancel', () => flow.cancel());
 
@@ -149,6 +184,12 @@ ipcMain.handle('history:openFolder', async (_e, id: string) => {
 ipcMain.handle('history:openReadme', async (_e, id: string) => {
   const entry = historyEntry(String(id));
   if (entry) await openPath(path.join(entry.folder, 'README.md'));
+});
+ipcMain.handle('history:openLog', async (_e, id: string) => {
+  const entry = historyEntry(String(id));
+  if (!entry?.logFile) return;
+  if (existsSync(entry.logFile)) await openPath(entry.logFile);
+  else log('error', 'That log file has been deleted (only the last 100 runs are kept).');
 });
 
 ipcMain.handle('app:stop', () => {

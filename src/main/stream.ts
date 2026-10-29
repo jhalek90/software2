@@ -12,6 +12,9 @@ export interface StreamResult {
 
 export interface ParsedLine {
   entries: LogEntry[];
+  /** What Claude is doing now, as one short sentence for the status line ("Writing src/app.js").
+   *  Set when the line says something new; the last block of the line wins. */
+  activity?: string;
   /** Set by the final `result` event. */
   result?: StreamResult;
 }
@@ -35,13 +38,18 @@ export function parseStreamLine(line: string, folder: string): ParsedLine {
     case 'system':
       if (ev.subtype === 'init') {
         const bits = [ev.model && `model ${ev.model}`, ev.permissionMode && `permission mode ${ev.permissionMode}`].filter(Boolean);
-        return { entries: [{ kind: 'info', text: `Claude started${bits.length ? ` (${bits.join(', ')})` : ''}.` }] };
+        return { entries: [{ kind: 'info', text: `Claude started${bits.length ? ` (${bits.join(', ')})` : ''}.` }], activity: 'Getting started...' };
       }
-      if (ev.subtype === 'compact_boundary') return { entries: [{ kind: 'info', text: 'Claude compacted its context.' }] };
+      if (ev.subtype === 'compact_boundary') {
+        return { entries: [{ kind: 'info', text: 'Claude compacted its context.' }], activity: 'Tidying up its notes...' };
+      }
       return { entries: [] };
 
-    case 'assistant':
-      return { entries: contentOf(ev).flatMap((block) => assistantBlock(block, folder)) };
+    case 'assistant': {
+      const blocks = contentOf(ev);
+      const activity = blocks.map((block) => blockActivity(block, folder)).filter(Boolean).at(-1);
+      return { entries: blocks.flatMap((block) => assistantBlock(block, folder)), ...(activity ? { activity } : {}) };
+    }
 
     case 'user':
       return { entries: contentOf(ev).flatMap(toolResult) };
@@ -126,6 +134,92 @@ export function toolLine(name: string, input: Record<string, any>, folder: strin
       what = Object.values(input).find((v): v is string => typeof v === 'string' && v.trim() !== '') ?? '';
   }
   return `${name} ${oneLine(what)}`.trim();
+}
+
+/** Status lines are cut to this many characters (the window cuts them further with an ellipsis). */
+const ACTIVITY_CHARS = 90;
+/** Claude's text is shown as is only when its first sentence is this short; otherwise "Thinking...". */
+const SENTENCE_CHARS = 80;
+
+function blockActivity(block: Record<string, any>, folder: string): string | undefined {
+  if (block.type === 'tool_use') return toolActivity(String(block.name ?? 'Tool'), block.input ?? {}, folder);
+  if (block.type === 'thinking' || block.type === 'redacted_thinking') return 'Thinking...';
+  if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) return textActivity(block.text);
+  return undefined;
+}
+
+/** Claude's text as a status: its first sentence when that is short, else "Thinking...". */
+export function textActivity(text: string): string {
+  const first = (text.split(/\r?\n/).find((l) => l.trim()) ?? '')
+    .replace(/^[\s#>*\-]+/, '')
+    .replace(/[*_`]/g, '')
+    .trim();
+  const sentence = (first.match(/^.*?[.!?:](?=\s|$)/)?.[0] ?? first).replace(/:$/, '...').trim();
+  return sentence && sentence.length <= SENTENCE_CHARS ? sentence : 'Thinking...';
+}
+
+/** A tool call as a status: "Writing src/app.js", "Running npm test", "Committing: Add README". */
+export function toolActivity(name: string, input: Record<string, any>, folder: string): string {
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  const file = (p: unknown) => relPath(str(p), folder) || 'a file';
+  let text: string;
+  switch (name) {
+    case 'Write':
+      text = `Writing ${file(input.file_path)}`;
+      break;
+    case 'Edit':
+    case 'MultiEdit':
+      text = `Editing ${file(input.file_path)}`;
+      break;
+    case 'NotebookEdit':
+      text = `Editing ${file(input.notebook_path)}`;
+      break;
+    case 'Read':
+      text = `Reading ${file(input.file_path)}`;
+      break;
+    case 'Bash':
+    case 'PowerShell':
+      text = commandActivity(str(input.command)) || str(input.description) || 'Running a command';
+      break;
+    case 'Glob':
+      text = `Looking for ${str(input.pattern) || 'files'}`;
+      break;
+    case 'Grep':
+      text = `Searching for ${JSON.stringify(str(input.pattern))}`;
+      break;
+    case 'TodoWrite': {
+      const todos = Array.isArray(input.todos) ? input.todos : [];
+      const done = todos.filter((t: any) => t?.status === 'completed').length;
+      text = todos.length ? `Planning: ${done} of ${todos.length} steps done` : 'Planning';
+      break;
+    }
+    case 'Task':
+    case 'Agent':
+      text = `Handing off: ${str(input.description) || 'a sub-task'}`;
+      break;
+    case 'WebFetch':
+      text = `Fetching ${str(input.url) || 'a web page'}`;
+      break;
+    case 'WebSearch':
+      text = `Searching the web for ${JSON.stringify(str(input.query))}`;
+      break;
+    default:
+      text = `Using ${name}`;
+  }
+  return cut(oneLine(text, ACTIVITY_CHARS).replace(/ \.\.\.$/, '...'), ACTIVITY_CHARS);
+}
+
+/** "Committing: <message>" for a git commit anywhere in the command, else "Running <first line>". */
+function commandActivity(command: string): string {
+  const commit = command.match(/\bgit\b(?:\s+-c\s+\S+)*\s+commit\b[^\n]*?\s(?:-[a-zA-Z]*m|--message)[= ]?\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)'|(\S+))/);
+  if (commit) return `Committing: ${(commit[1] ?? commit[2] ?? commit[3]).replace(/\\"/g, '"')}`;
+  if (/\bgit\b(?:\s+-c\s+\S+)*\s+commit\b/.test(command)) return 'Committing';
+  const lines = command.split(/\r?\n/).filter((l) => l.trim());
+  return lines.length ? `Running ${lines[0].trim()}${lines.length > 1 ? '...' : ''}` : '';
+}
+
+function cut(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max - 3).trimEnd() + '...' : text;
 }
 
 /** A path relative to the project folder when it is inside it, with forward slashes. */

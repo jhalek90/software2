@@ -1,4 +1,4 @@
-// Renderer: the text box, the live status line, the build result and the Settings sheet. A plain script (no imports); everything it can do goes through
+// Renderer: the "build me" box and its Advanced panel, the live status line, the build result and the Settings sheet. A plain script (no imports); everything it can do goes through
 // window.api from the preload. The full log is not shown here: it goes to a file per run.
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -7,6 +7,15 @@ const form = $<HTMLFormElement>('request-form');
 const request = $<HTMLTextAreaElement>('request');
 const goButton = $<HTMLButtonElement>('go');
 const noticeEl = $<HTMLParagraphElement>('notice');
+
+const advToggle = $<HTMLButtonElement>('adv-toggle');
+const advPanel = $<HTMLDivElement>('advanced');
+const advChip = $<HTMLButtonElement>('adv-chip');
+const advTime = $<HTMLInputElement>('adv-time');
+const advStyle = $<HTMLInputElement>('adv-style');
+const advError = $<HTMLParagraphElement>('adv-error');
+const fileList = $<HTMLUListElement>('file-list');
+const hintEl = $<HTMLSpanElement>('hint');
 
 const settingsDialog = $<HTMLDialogElement>('settings-dialog');
 const claudePath = $<HTMLInputElement>('claude-path');
@@ -28,7 +37,8 @@ window.api.onWindowState((state) => {
   backdrop.setMinimized(state.minimized);
 });
 
-// The placeholder cycles through a few example requests while the box is empty.
+// The placeholders cycle through a few examples while their boxes are empty: what to
+// build after "build me", and a design style in the Advanced panel.
 
 const EXAMPLES = [
   'a to-do list web page',
@@ -37,16 +47,198 @@ const EXAMPLES = [
   'a CSV to JSON converter for the command line',
   'a tiny expense tracker',
 ];
+const STYLES = ['dark and minimal', 'playful, pastel colours', 'like a 90s website', 'clean, lots of white space'];
 let example = 0;
 setInterval(() => {
-  if (request.value || document.hidden) return;
-  request.classList.add('placeholder-out');
+  if (document.hidden) return;
+  const boxes = [request, advStyle].filter((box) => !box.value);
+  boxes.forEach((box) => box.classList.add('placeholder-out'));
   setTimeout(() => {
-    example = (example + 1) % EXAMPLES.length;
-    request.placeholder = `For example: ${EXAMPLES[example]}`;
-    request.classList.remove('placeholder-out');
+    example++;
+    request.placeholder = EXAMPLES[example % EXAMPLES.length];
+    advStyle.placeholder = STYLES[example % STYLES.length];
+    boxes.forEach((box) => box.classList.remove('placeholder-out'));
   }, 350);
 }, 4000);
+
+// Advanced: this run's max run time, a design style and files for the project. The panel
+// is hidden whenever the app opens and nothing in it is saved. When anything is set, a
+// chip in the box says so, open or closed, so nothing is hidden by surprise.
+
+/** The same limits as RUN_TIME_MIN/MAX and MAX_TOTAL_BYTES in src/main/advanced.ts
+ *  (the main process checks again). */
+const RUN_TIME = { min: 5, max: 120 };
+const MAX_FILES_BYTES = 200 * 1024 * 1024;
+let userFiles: UserFile[] = [];
+
+function sizeText(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  const mb = kb / 1024;
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/** The run time typed in Advanced, kept in range; null when empty (Settings' cap then). */
+function runTime(): number | null {
+  const n = Number(advTime.value);
+  if (!advTime.value.trim() || !Number.isFinite(n) || n <= 0) return null;
+  return Math.min(Math.max(Math.round(n), RUN_TIME.min), RUN_TIME.max);
+}
+
+function advancedOptions(): AdvancedOptions {
+  return { capMinutes: runTime(), style: advStyle.value.trim(), files: userFiles.map((f) => f.path) };
+}
+
+function setAdvancedOpen(open: boolean): void {
+  const opening = open && advPanel.hidden !== false;
+  advPanel.hidden = !open;
+  advToggle.setAttribute('aria-expanded', String(open));
+  advToggle.classList.toggle('on', open);
+  // In a small window the panel can open below the fold: bring it into view once it is in.
+  if (opening) setTimeout(() => advPanel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300);
+}
+
+function showAdvError(text: string): void {
+  advError.textContent = text;
+  advError.hidden = !text;
+}
+
+/** Redraws the file list and the summary chip ("30 min · dark and minimal · 3 files"). */
+function renderAdvanced(): void {
+  fileList.replaceChildren(
+    ...userFiles.map((f, i) => {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = f.name;
+      name.title = f.path;
+      const size = document.createElement('span');
+      size.className = 'file-size';
+      size.textContent = sizeText(f.size);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'icon-button file-remove';
+      remove.title = `Remove ${f.name}`;
+      remove.setAttribute('aria-label', remove.title);
+      remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+      remove.addEventListener('click', () => {
+        userFiles.splice(i, 1);
+        showAdvError('');
+        renderAdvanced();
+      });
+      li.append(name, size, remove);
+      return li;
+    }),
+  );
+  if (userFiles.length > 1) {
+    const total = document.createElement('li');
+    total.className = 'file-total';
+    total.textContent = `${plural(userFiles.length, 'file')}, ${sizeText(userFiles.reduce((s, f) => s + f.size, 0))} of 200 MB`;
+    fileList.append(total);
+  }
+
+  const time = runTime();
+  const style = advStyle.value.trim();
+  const parts = [
+    ...(time ? [`${time} min`] : []),
+    ...(style ? [style.length > 32 ? `${style.slice(0, 30)}...` : style] : []),
+    ...(userFiles.length ? [plural(userFiles.length, 'file')] : []),
+  ];
+  advChip.textContent = parts.join(' · ');
+  advChip.hidden = parts.length === 0;
+  hintEl.hidden = parts.length > 0;
+  advToggle.classList.toggle('set', parts.length > 0);
+}
+
+/** Adds files the main process has looked at: no doubles, folders refused, and the total
+ *  kept under the size cap (the ones that would go over are left out, with a message). */
+function addFiles(found: InspectedFiles): void {
+  const messages = [...found.refused];
+  const have = new Set(userFiles.map((f) => f.path.toLowerCase()));
+  let total = userFiles.reduce((s, f) => s + f.size, 0);
+  const tooBig: string[] = [];
+  for (const f of found.files) {
+    if (have.has(f.path.toLowerCase())) continue;
+    if (total + f.size > MAX_FILES_BYTES) {
+      tooBig.push(f.name);
+      continue;
+    }
+    have.add(f.path.toLowerCase());
+    total += f.size;
+    userFiles.push(f);
+  }
+  if (tooBig.length) {
+    messages.push(`Left out ${tooBig.map((n) => `"${n}"`).join(', ')}: the files can add up to 200 MB at most.`);
+  }
+  showAdvError(messages.join(' '));
+  if (messages.length || found.files.length) setAdvancedOpen(true);
+  renderAdvanced();
+}
+
+/** Clears the panel (for "Build something else"). */
+function resetAdvanced(): void {
+  advTime.value = '';
+  advStyle.value = '';
+  userFiles = [];
+  showAdvError('');
+  setAdvancedOpen(false);
+  renderAdvanced();
+}
+
+advToggle.addEventListener('click', () => setAdvancedOpen(advPanel.hidden !== false));
+advChip.addEventListener('click', () => {
+  setAdvancedOpen(true);
+  advTime.focus();
+});
+advStyle.addEventListener('input', renderAdvanced);
+advTime.addEventListener('input', renderAdvanced);
+// Out of range when leaving the box: show the value that will be used.
+advTime.addEventListener('change', () => {
+  const t = runTime();
+  advTime.value = t === null ? '' : String(t);
+  renderAdvanced();
+});
+$<HTMLButtonElement>('add-files').addEventListener('click', async () => addFiles(await window.api.pickFiles()));
+
+// Files can be dropped anywhere on the window (the panel opens to show them). Without
+// this, Chromium would open a dropped file in the window instead.
+const dropzone = $<HTMLDivElement>('dropzone');
+let dragDepth = 0;
+const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
+document.addEventListener('dragenter', (e) => {
+  if (!hasFiles(e)) return;
+  dragDepth++;
+  document.body.classList.add('dragging');
+});
+document.addEventListener('dragleave', (e) => {
+  if (!hasFiles(e)) return;
+  if (--dragDepth <= 0) {
+    dragDepth = 0;
+    document.body.classList.remove('dragging');
+  }
+});
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = hasFiles(e) && !working ? 'copy' : 'none';
+  dropzone.classList.toggle('over', e.target instanceof Node && dropzone.contains(e.target));
+});
+document.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove('dragging');
+  dropzone.classList.remove('over');
+  if (working || !e.dataTransfer?.files.length) return;
+  const dropped = Array.from(e.dataTransfer.files);
+  const paths = dropped.map((f) => window.api.pathForFile(f)).filter(Boolean);
+  const found = await window.api.inspectFiles(paths);
+  if (paths.length < dropped.length) found.refused.unshift('Some of what was dropped is not a file on this PC.');
+  addFiles(found);
+});
 
 /** A short message under the text box, for things that went wrong outside a run. */
 function showNotice(text: string): void {
@@ -60,6 +252,8 @@ function showSettings(s: Settings): void {
   claudePath.value = s.claudePath;
   projectsFolder.value = s.projectsFolder;
   buildCap.value = String(s.buildCapMinutes);
+  advTime.placeholder = String(s.buildCapMinutes);
+  advTime.title = `Empty: ${s.buildCapMinutes} min, the build time cap in Settings. ${RUN_TIME.min} to ${RUN_TIME.max} min.`;
   skipPermissions.checked = s.skipPermissions;
 }
 
@@ -199,6 +393,7 @@ function showActivity(text: string): void {
 function onStatus(status: string): void {
   if (status === 'Estimating...') setPhase('estimating', 'Estimating how long it will take...');
   else if (status === 'Choose a folder for the project') setPhase('folder', 'Choose or create an empty folder for the project');
+  else if (status === 'Copying your files') setPhase('folder', 'Copying your files into assets/...');
   else if (status === 'Building...') {
     if (phase !== 'building') setPhase('building', 'Starting the build...');
   } else setPhase('idle');
@@ -236,7 +431,7 @@ async function go(): Promise<void> {
   setWorking(true);
   let outcome: EstimateOutcome;
   try {
-    outcome = await window.api.estimate(request.value);
+    outcome = await window.api.estimate(request.value, advancedOptions());
   } catch (err) {
     outcome = { status: 'error', error: (err as Error).message };
   } finally {
@@ -265,7 +460,16 @@ async function showConfirm(estimate: Estimate): Promise<void> {
   fillList($('confirm-steps'), estimate.steps);
   fillList($('confirm-risks'), estimate.risks);
   $('confirm-risks-box').hidden = estimate.risks.length === 0;
-  $('confirm-cap').textContent = `The build is stopped after ${s.buildCapMinutes} minutes (build time cap in Settings).`;
+  const time = runTime();
+  $('confirm-cap').textContent = time
+    ? `The build is stopped after ${time} minutes (max run time for this build, set in Advanced).`
+    : `The build is stopped after ${s.buildCapMinutes} minutes (build time cap in Settings).`;
+  const style = advStyle.value.trim();
+  $('confirm-style').textContent = `Style: ${style}`;
+  $('confirm-style').hidden = !style;
+  $('confirm-files').textContent = `${plural(userFiles.length, 'file')} for assets/`;
+  $('confirm-files').title = userFiles.map((f) => f.name).join(', ');
+  $('confirm-files').hidden = userFiles.length === 0;
   $('confirm-warning').hidden = !s.skipPermissions;
   $('confirm-limited').hidden = s.skipPermissions;
   confirmDialog.returnValue = '';
@@ -372,6 +576,7 @@ $<HTMLButtonElement>('result-close').addEventListener('click', () => {
   resultBox.hidden = true;
   backdrop.setScene('idle');
   request.value = '';
+  resetAdvanced();
   request.focus();
 });
 $<HTMLButtonElement>('open-folder').addEventListener('click', () => window.api.openFolder());

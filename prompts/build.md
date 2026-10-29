@@ -9,6 +9,14 @@ questions, so never ask any: make sensible choices, write them down, and keep go
 {{request}}
 </request>
 
+## Design direction
+
+{{design}}
+
+## Files from the person
+
+{{files}}
+
 ## The plan (from the estimate)
 
 Summary: {{summary}}
@@ -25,7 +33,8 @@ say so in the README.
 
 - Work only inside this folder: {{folder}}
   Do not read, change or create anything outside it. Do not install anything globally.
-- This is a fresh git repo with one empty commit. Use git: commit after each working
+- This is a fresh git repo: an empty first commit, then the person's files in assets/ if
+  they gave any. Use git: commit after each working
   step, with a clear message saying what the step did. Git worktrees are fine if you
   split the work, but merge everything back into main before you finish. Local git
   only: no remotes, no pushing.

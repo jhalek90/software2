@@ -5,6 +5,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { designText, filesText, type FileInfo } from './advanced';
 import type { Estimate } from './estimate';
 import { git } from './project';
 import type { RunOptions, RunResult } from './runner';
@@ -36,13 +37,23 @@ export interface BuildOutcome {
 }
 
 export interface BuildJob {
-  /** What the user typed. */
+  /** The request: "Build me " and what the user typed. */
   request: string;
   estimate: Estimate;
   /** The new project folder: empty apart from .git, with one empty commit. */
   folder: string;
   /** Settings as they were when the user pressed "Build it" (cap, skip permissions, CLI path). */
   settings: Settings;
+  /** From the Advanced panel: this run's time cap (instead of the one in Settings), the
+   *  design style, and the files already copied into the folder's assets/. */
+  capMinutes?: number;
+  style?: string;
+  files?: FileInfo[];
+}
+
+/** This build's time cap: the Advanced panel's, else the one in Settings. */
+export function capMinutesFor(job: BuildJob): number {
+  return job.capMinutes ?? job.settings.buildCapMinutes;
 }
 
 export type BuildEvent =
@@ -100,8 +111,8 @@ export function permissionsNote(skipPermissions: boolean): string {
   );
 }
 
-/** Fills the template's {{request}}, {{summary}}, {{stack}}, {{steps}}, {{folder}} and
- *  {{permissions}} in one pass, so text in the request is never filled in again.
+/** Fills the template's {{request}}, {{summary}}, {{stack}}, {{steps}}, {{folder}},
+ *  {{permissions}}, {{design}} and {{files}} in one pass, so text in the request is never filled in again.
  *  Line endings become \n (a Windows checkout has the file with \r\n). */
 export function buildPrompt(template: string, job: BuildJob): string {
   const { estimate } = job;
@@ -112,6 +123,8 @@ export function buildPrompt(template: string, job: BuildJob): string {
     steps: estimate.steps.length ? estimate.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : '(none given)',
     folder: job.folder,
     permissions: permissionsNote(job.settings.skipPermissions),
+    design: designText(job.style),
+    files: filesText(job.files, 'build'),
   };
   return template.replace(/\r\n/g, '\n').replace(/\{\{(\w+)\}\}/g, (m, key: string) => (key in values ? values[key] : m));
 }
@@ -120,7 +133,7 @@ export function buildPrompt(template: string, job: BuildJob): string {
 export async function runBuild(job: BuildJob, ctx: BuildContext): Promise<BuildOutcome> {
   const { log, setStatus } = ctx;
   const startedAt = new Date();
-  const capMinutes = job.settings.buildCapMinutes;
+  const capMinutes = capMinutesFor(job);
   const finish = (result: BuildResult, summary: string, extra: Partial<BuildOutcome> = {}): BuildOutcome => {
     const outcome: BuildOutcome = {
       request: job.request,
@@ -160,7 +173,9 @@ export async function runBuild(job: BuildJob, ctx: BuildContext): Promise<BuildO
 
   ctx.onActivity?.('Starting Claude...');
   const base = (await git(job.folder, ['rev-parse', 'HEAD']).catch(() => '')).trim();
-  log('info', `Building in ${job.folder}. Time cap: ${capMinutes} min.`);
+  log('info', `Building in ${job.folder}. Time cap: ${capMinutes} min${job.capMinutes ? ' (set for this run)' : ''}.`);
+  if (job.style) log('info', `Design style: ${job.style}`);
+  if (job.files?.length) log('info', `Files in assets/: ${job.files.map((f) => f.name).join(', ')}`);
   log(
     'info',
     job.settings.skipPermissions

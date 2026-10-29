@@ -292,7 +292,7 @@ main {
    card fits in the window. */
 .stage:has(#result:not([hidden])) .wordmark { font-size: var(--fs-2xl); }
 .stage:has(#result:not([hidden])) .hero { display: none; }
-.stage:has(#result:not([hidden])) .composer textarea { min-height: 52px; }
+.stage:has(#result:not([hidden])) .composer textarea { min-height: 26px; }
 
 .composer {
   border-radius: 22px;
@@ -304,10 +304,21 @@ main {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--glass-rim));
   box-shadow: inset 0 1px 0 var(--glass-shine), 0 0 0 4px var(--accent-soft), 0 8px 40px -6px var(--accent-glow), var(--shadow);
 }
+/* "build me [ ... ]": the fixed words, then the box, on one baseline like a sentence. */
+.sentence { display: flex; align-items: baseline; gap: 10px; }
+.lead {
+  flex: none;
+  font: 600 17px/1.5 var(--code);
+  color: var(--accent);
+  letter-spacing: -0.01em;
+  cursor: text;
+  user-select: none;
+}
 .composer textarea {
   display: block;
-  width: 100%;
-  min-height: 84px;
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
   max-height: 40vh;
   padding: 2px 0;
   border: none;
@@ -323,6 +334,112 @@ main {
 .composer textarea::placeholder { color: var(--text-3); opacity: 1; transition: color 0.35s var(--ease); }
 .composer textarea.placeholder-out::placeholder { color: transparent; }
 .composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.foot-buttons { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+
+/* The Advanced toggle: a quiet text button with a sliders icon; accent while open, and a
+   dot when something in the panel is set. */
+.adv-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.adv-toggle:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.adv-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.adv-toggle.on { color: var(--accent); background: var(--accent-soft); }
+.adv-toggle.set:not(.on)::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 21px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--glass-strong);
+}
+
+/* The summary chip, in place of the keyboard hint when anything in Advanced is set. */
+.adv-chip {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.adv-chip:hover { background: color-mix(in srgb, var(--accent-soft) 100%, var(--accent) 8%); }
+
+/* The Advanced panel, under the box's foot. It slides open to its height. */
+.advanced {
+  overflow: clip;
+  transition: opacity 0.25s var(--ease), height 0.28s var(--ease), display 0.28s allow-discrete;
+  interpolate-size: allow-keywords;
+}
+.advanced[hidden] { opacity: 0; height: 0; }
+@starting-style { .advanced:not([hidden]) { opacity: 0; height: 0; } }
+.advanced-inner {
+  margin-top: 12px;
+  padding: 14px 4px 4px 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.adv-row { display: flex; flex-wrap: wrap; gap: 14px 18px; }
+.adv-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.adv-field.grow { flex: 1; min-width: 200px; }
+.adv-field > label, .adv-label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
+.adv-field .row input[type="number"] { width: 84px; }
+.adv-field input::placeholder { color: var(--text-3); opacity: 1; transition: color 0.35s var(--ease); }
+.adv-field input.placeholder-out::placeholder { color: transparent; }
+
+.dropzone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 12px 14px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  transition: border-color 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+.dropzone > svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.dropzone-note { flex-basis: 100%; color: var(--text-3); font-size: var(--fs-xs); }
+.dropzone-note code { font-size: 11px; }
+.dragging .dropzone { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.dropzone.over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+
+.file-list { margin: 0; padding: 0; list-style: none; max-height: 168px; overflow: auto; }
+.file-list:empty { display: none; }
+.file-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 2px 2px 10px;
+  border-radius: var(--radius-sm);
+}
+.file-list li:hover { background: var(--hover); }
+.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-size { flex: none; color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.file-remove.icon-button { width: 28px; height: 28px; }
+.file-remove svg { width: 15px; height: 15px; }
+.file-list li.file-total { padding: 4px 10px 0; color: var(--text-3); font-size: var(--fs-xs); }
+.file-list li.file-total:hover { background: none; }
+.adv-error { color: var(--bad); font-size: var(--fs-sm); }
 .hint { color: var(--text-3); font-size: var(--fs-xs); }
 .hint kbd {
   padding: 1px 5px;

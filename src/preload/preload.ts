@@ -1,6 +1,6 @@
 // Exposes a small, fixed API to the renderer. The renderer never gets Node or ipcRenderer.
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 const api: Software2Api = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
@@ -8,7 +8,10 @@ const api: Software2Api = {
   detectClaude: () => ipcRenderer.invoke('settings:detectClaude'),
   pickClaude: () => ipcRenderer.invoke('dialog:pickClaude'),
   pickFolder: (current) => ipcRenderer.invoke('dialog:pickFolder', current),
-  estimate: (request) => ipcRenderer.invoke('app:estimate', request),
+  estimate: (request, options) => ipcRenderer.invoke('app:estimate', request, options),
+  pickFiles: () => ipcRenderer.invoke('files:pick'),
+  inspectFiles: (paths) => ipcRenderer.invoke('files:inspect', paths),
+  pathForFile: (file) => webUtils.getPathForFile(file),
   confirm: () => ipcRenderer.invoke('app:confirm'),
   cancel: () => ipcRenderer.invoke('app:cancel'),
   stop: () => ipcRenderer.invoke('app:stop'),

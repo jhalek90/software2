@@ -43,14 +43,56 @@
       <h1 class="wordmark" aria-label="software(2);">software<span class="wordmark-accent">(2)</span><span class="wordmark-semi">;</span></h1>
       <p class="hero" id="hero">What do you want to build?</p>
 
+      <!-- The box reads as a sentence: "build me" and then what to build. The request sent
+           on is "Build me " plus what was typed. -->
       <form id="request-form" class="composer">
-        <textarea id="request" rows="3" spellcheck="true" placeholder="For example: a to-do list web page" aria-labelledby="hero" autofocus></textarea>
+        <div class="sentence">
+          <label id="lead" for="request" class="lead">build me</label>
+          <textarea id="request" rows="1" spellcheck="true" placeholder="a to-do list web page" aria-labelledby="hero lead" autofocus></textarea>
+        </div>
         <div class="composer-foot">
-          <span class="hint"><kbd>Enter</kbd> to build · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>
-          <button id="go" type="submit" class="primary go">
-            Go
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
-          </button>
+          <span id="hint" class="hint"><kbd>Enter</kbd> to build · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>
+          <button id="adv-chip" type="button" class="adv-chip" title="Advanced options for this run (click to change)" hidden></button>
+          <span class="foot-buttons">
+            <button id="adv-toggle" type="button" class="adv-toggle" aria-expanded="false" aria-controls="advanced" title="Max run time, design style and files">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+              Advanced
+            </button>
+            <button id="go" type="submit" class="primary go">
+              Go
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+            </button>
+          </span>
+        </div>
+
+        <!-- Advanced: hidden every time the app opens; nothing in it is saved. -->
+        <div id="advanced" class="advanced" role="group" aria-label="Advanced options" hidden>
+          <div class="advanced-inner">
+            <div class="adv-row">
+              <div class="adv-field">
+                <label for="adv-time">Max run time</label>
+                <div class="row">
+                  <input id="adv-time" type="number" min="5" max="120" step="5" inputmode="numeric">
+                  <span class="unit">min</span>
+                </div>
+              </div>
+              <div class="adv-field grow">
+                <label for="adv-style">Design style</label>
+                <input id="adv-style" type="text" spellcheck="true" maxlength="300" placeholder="dark and minimal">
+              </div>
+            </div>
+            <div class="adv-field">
+              <span class="adv-label" id="files-label">Files</span>
+              <div id="dropzone" class="dropzone" aria-labelledby="files-label">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+                <span>Drop files here or</span>
+                <button id="add-files" type="button" class="small">Add files</button>
+                <span class="dropzone-note">Photos, logos, data... up to 200 MB in all. They are copied into the project's <code>assets</code> folder.</span>
+              </div>
+              <ul id="file-list" class="file-list"></ul>
+              <p id="adv-error" class="adv-error" role="status" hidden></p>
+            </div>
+          </div>
         </div>
       </form>
 
@@ -145,6 +187,8 @@
       <div class="chips">
         <span id="confirm-minutes" class="chip accent"></span>
         <span id="confirm-stack" class="chip"></span>
+        <span id="confirm-style" class="chip"></span>
+        <span id="confirm-files" class="chip"></span>
       </div>
       <h3>Steps</h3>
       <ol id="confirm-steps" class="steps"></ol>

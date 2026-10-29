@@ -4,6 +4,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { designText, filesText, type FileInfo } from './advanced';
 import { runClaude, type RunHandle, type RunOptions } from './runner';
 
 export interface Estimate {
@@ -39,7 +40,9 @@ export const ESTIMATE_ARGS = [
   '--no-session-persistence',
 ];
 
-export function estimatePrompt(request: string): string {
+/** The design style and the files (names, types and sizes only: the estimate never sees
+ *  the files themselves) go in when the Advanced panel has them. */
+export function estimatePrompt(request: string, extras: { style?: string; files?: FileInfo[] } = {}): string {
   return [
     'software2 estimate request.',
     'Do not build anything and do not use any tools. Only answer.',
@@ -48,6 +51,12 @@ export function estimatePrompt(request: string): string {
     '<request>',
     request.trim(),
     '</request>',
+    '',
+    'Design direction:',
+    designText(extras.style),
+    '',
+    'Files supplied by the person:',
+    filesText(extras.files, 'estimate'),
     '',
     'Later, one headless Claude Code run will build it in one go, in a new empty folder',
     'on Windows, with local git only. Estimate that run.',
@@ -61,6 +70,9 @@ export function estimatePrompt(request: string): string {
 export interface EstimateOptions {
   cliPath: string;
   request: string;
+  /** From the Advanced panel. Only each file's name, type and size are passed on. */
+  style?: string;
+  files?: FileInfo[];
   /** Default ESTIMATE_TIMEOUT_MS. */
   timeoutMs?: number;
   /** Parent for the temporary empty working folder. Default: the OS temp folder. */
@@ -92,7 +104,10 @@ export function startEstimate(opts: EstimateOptions): EstimateHandle {
     cliPath: opts.cliPath,
     args: ESTIMATE_ARGS,
     cwd,
-    stdin: estimatePrompt(opts.request),
+    stdin: estimatePrompt(opts.request, {
+      style: opts.style,
+      files: opts.files?.map(({ name, size, type }) => ({ name, size, type })),
+    }),
     timeoutMs,
     env: opts.env,
     onStdout: (line) => {

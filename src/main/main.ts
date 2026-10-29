@@ -3,6 +3,7 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { inspectFiles, type AdvancedOptions } from './advanced';
 import { ALLOWED_COMMANDS, runBuild, type BuildEvent, type BuildOutcome } from './build';
 import { DEMO, demoFolder, setupDemo, takeShots } from './demo';
 import { Flow } from './flow';
@@ -123,6 +124,17 @@ ipcMain.handle('dialog:pickFolder', async (_e, current: string) => {
   return res.canceled ? null : res.filePaths[0];
 });
 
+// The Advanced panel's files: only looked at (size, file or folder) and, at build time,
+// copied into the project's assets/. Never opened or sent anywhere.
+ipcMain.handle('files:pick', async () => {
+  const res = await dialog.showOpenDialog(win!, {
+    title: 'Add files for the project',
+    properties: ['openFile', 'multiSelections'],
+  });
+  return inspectFiles(res.canceled ? [] : res.filePaths);
+});
+ipcMain.handle('files:inspect', (_e, paths: string[]) => inspectFiles(Array.isArray(paths) ? paths.map(String) : []));
+
 const flow = new Flow({
   settings: () => loadSettings(settingsDir()),
   log,
@@ -169,7 +181,7 @@ const flow = new Flow({
   },
 });
 
-ipcMain.handle('app:estimate', (_e, request: string) => {
+ipcMain.handle('app:estimate', (_e, request: string, options?: AdvancedOptions) => {
   const text = String(request ?? '');
   if (text.trim() && !flow.busy) {
     try {
@@ -178,7 +190,7 @@ ipcMain.handle('app:estimate', (_e, request: string) => {
       runLog = null; // No log file then; the run itself still works.
     }
   }
-  return flow.estimate(text);
+  return flow.estimate(text, options);
 });
 ipcMain.handle('app:confirm', () => flow.confirm());
 ipcMain.handle('app:cancel', () => flow.cancel());

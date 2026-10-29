@@ -7,6 +7,14 @@ type EstimateOutcome = import('./main/estimate').EstimateOutcome;
 type ConfirmOutcome = import('./main/flow').ConfirmOutcome;
 type BuildOutcome = import('./main/build').BuildOutcome;
 type BuildEvent = import('./main/build').BuildEvent;
+type AdvancedOptions = import('./main/advanced').AdvancedOptions;
+type UserFile = import('./main/advanced').UserFile;
+
+/** Files looked at for the Advanced panel, and why any were left out. */
+interface InspectedFiles {
+  files: UserFile[];
+  refused: string[];
+}
 
 interface LogEntry {
   /** assistant: Claude's text; tool: a tool call as one line; output: a trimmed tool result. */
@@ -25,8 +33,14 @@ interface Software2Api {
   detectClaude(): Promise<string | null>;
   pickClaude(): Promise<string | null>;
   pickFolder(current: string): Promise<string | null>;
-  /** Step 1 of Go. On ok, call confirm() ("Build it") or cancel(). */
-  estimate(request: string): Promise<EstimateOutcome>;
+  /** Step 1 of Go, with what was typed after "build me" and the Advanced panel's options.
+   *  On ok, call confirm() ("Build it") or cancel(). */
+  estimate(request: string, options?: AdvancedOptions): Promise<EstimateOutcome>;
+  /** The Advanced panel's files: a file dialog, or paths dropped on the page. */
+  pickFiles(): Promise<InspectedFiles>;
+  inspectFiles(paths: string[]): Promise<InspectedFiles>;
+  /** The full path of a dropped file ('' if it has none). */
+  pathForFile(file: File): string;
   /** Folder dialog, git init, then the build. */
   confirm(): Promise<ConfirmOutcome>;
   cancel(): Promise<void>;

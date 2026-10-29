@@ -23,9 +23,10 @@
 //   FAKE_CLAUDE_DELAY_MS    pause before each output line (default 50)
 //   FAKE_CLAUDE_RESULT      the result text (default: a short canned answer)
 //   FAKE_CLAUDE_EXIT_CODE   exit code in normal and fail modes (default 0 / 1)
+//   FAKE_CLAUDE_PROMPT_FILE write the prompt it got to this file (tests read it back)
 
 import { execFileSync, spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
@@ -70,6 +71,7 @@ async function main() {
 
   const pArg = value('-p') ?? value('--print');
   const prompt = pArg && !pArg.startsWith('-') ? pArg : await readStdin();
+  if (env.FAKE_CLAUDE_PROMPT_FILE) writeFileSync(env.FAKE_CLAUDE_PROMPT_FILE, prompt);
   const format = value('--output-format') || 'text';
   const sessionId = '00000000-0000-4000-8000-000000000000';
   const cannedEstimate = JSON.stringify({
@@ -121,7 +123,7 @@ async function main() {
     total_cost_usd: 0,
   };
   // Not in the real CLI either: what the json-mode call looked like.
-  const finalWithFake = { ...final, fake: { args, cwd: process.cwd(), promptLength: prompt.length } };
+  const finalWithFake = { ...final, fake: { args, cwd: process.cwd(), cwdEntries: readdirSync(process.cwd()), promptLength: prompt.length } };
 
   if (mode === 'hang' || mode === 'hang-with-child') {
     await out(format === 'stream-json' ? JSON.stringify(init) : 'fake-claude: hanging');
@@ -155,6 +157,7 @@ async function fakeBuild(prompt, sessionId, final) {
     }));
   const request = (prompt.match(/<request>\s*([\s\S]*?)\s*<\/request>/) ?? [])[1] ?? '';
   const readme = path.join(process.cwd(), 'README.md');
+  const assets = existsSync('assets') ? readdirSync('assets') : [];
 
   await say([
     { type: 'text', text: 'I will write a README and commit it.' },
@@ -163,7 +166,9 @@ async function fakeBuild(prompt, sessionId, final) {
   writeFileSync(readme, `# Fake build
 
 Request: ${request}
-
+${assets.length ? `
+Files in assets/: ${assets.join(', ')}
+` : ''}
 Written by test/fake-claude.mjs; nothing real was built.
 `);
   await toolResult('tool_1', `File created successfully at: ${readme}`);

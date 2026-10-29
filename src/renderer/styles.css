@@ -1,0 +1,95 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font: 14px/1.4 "Segoe UI", system-ui, sans-serif;
+  color: #1d1d1b;
+  background: #f6f6f4;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid #dddcd6;
+}
+
+h1 { margin: 0; font-size: 18px; font-weight: 600; }
+h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+
+button {
+  font: inherit;
+  padding: 6px 14px;
+  border: 1px solid #b9b8b0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+button:hover { background: #efeee9; }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: #2d5be3; border-color: #2d5be3; color: #fff; }
+button.primary:hover { background: #2449b8; }
+button.link { border: none; background: none; padding: 0; color: #2d5be3; }
+
+input[type="text"], input[type="number"], textarea {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid #b9b8b0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+#settings {
+  padding: 14px 20px;
+  border-bottom: 1px solid #dddcd6;
+  background: #fff;
+}
+#settings label { display: block; margin: 10px 0 4px; font-weight: 500; }
+#settings label.check { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
+.row { display: flex; gap: 8px; }
+.row input[type="text"] { flex: 1; min-width: 0; }
+.row input[type="number"] { width: 100px; }
+.warning { margin: 4px 0 0 24px; color: #a3370f; }
+.muted { margin: 8px 0 0; color: #6b6a64; min-height: 1.4em; }
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  font-size: 18px;
+  padding: 12px;
+}
+
+.actions { display: flex; gap: 8px; margin-top: 10px; }
+.actions .primary { padding: 8px 28px; font-size: 16px; }
+
+#status { margin: 14px 0 8px; font-weight: 500; }
+
+.log-head { display: flex; justify-content: space-between; color: #6b6a64; margin-bottom: 4px; }
+
+#log {
+  flex: 1;
+  min-height: 80px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.45 Consolas, monospace;
+  background: #1f1f1d;
+  color: #e6e5df;
+  border-radius: 6px;
+}
+#log .error, #log .stderr { color: #ff9b85; }
+#log .info { color: #9ec1ff; }

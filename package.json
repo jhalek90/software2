@@ -1,0 +1,18 @@
+{
+  "name": "software2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Type the software you want; Claude Code builds it in a new local folder.",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "tsc -p . && node scripts/copy-static.mjs",
+    "start": "npm run build && electron .",
+    "test": "npm run build && node --test \"test/*.test.mjs\""
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "electron": "^45.1.0",
+    "typescript": "^7.0.2"
+  }
+}

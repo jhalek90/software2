@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'">
+  <title>software2</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>software2</h1>
+    <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings">Settings</button>
+  </header>
+
+  <section id="settings" hidden>
+    <h2>Settings</h2>
+
+    <label for="claude-path">Claude CLI</label>
+    <div class="row">
+      <input id="claude-path" type="text" spellcheck="false" placeholder="Not found on PATH">
+      <button id="claude-detect" type="button">Detect</button>
+      <button id="claude-browse" type="button">Browse...</button>
+    </div>
+
+    <label for="projects-folder">Default folder for new projects</label>
+    <div class="row">
+      <input id="projects-folder" type="text" spellcheck="false">
+      <button id="projects-browse" type="button">Browse...</button>
+    </div>
+
+    <label for="build-cap">Build time cap (minutes)</label>
+    <div class="row">
+      <input id="build-cap" type="number" min="1" max="1440" step="1">
+    </div>
+
+    <label class="check">
+      <input id="skip-permissions" type="checkbox">
+      Let Claude build without asking permission (--dangerously-skip-permissions)
+    </label>
+    <p class="warning">Claude can then run any command on this PC, in and outside the project folder. Only use this for requests you trust.</p>
+
+    <p id="settings-saved" class="muted" aria-live="polite"></p>
+  </section>
+
+  <main>
+    <form id="request-form">
+      <textarea id="request" rows="4" placeholder="What software do you want?" aria-label="What software do you want?" autofocus></textarea>
+      <div class="actions">
+        <button id="go" type="submit" class="primary">Go</button>
+        <button id="stop" type="button">Stop</button>
+      </div>
+    </form>
+
+    <p id="status" aria-live="polite">Ready</p>
+    <div class="log-head">
+      <span>Log</span>
+      <button id="clear-log" type="button" class="link">Clear</button>
+    </div>
+    <pre id="log"></pre>
+  </main>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

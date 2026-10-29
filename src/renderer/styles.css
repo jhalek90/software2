@@ -134,3 +134,61 @@ dialog .actions { margin-top: 18px; }
 }
 #log .error, #log .stderr { color: #ff9b85; }
 #log .info { color: #9ec1ff; }
+
+#settings .note { margin: 4px 0 0 24px; color: #6b6a64; }
+#elapsed.over { color: #a3370f; }
+
+#result {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #dddcd6;
+  border-left: 4px solid #6b6a64;
+  border-radius: 6px;
+  background: #fff;
+}
+#result[data-result="done"] { border-left-color: #2f8a4a; }
+#result[data-result="failed"], #result[data-result="timed out"] { border-left-color: #a3370f; }
+#result[data-result="stopped"] { border-left-color: #b98a12; }
+.result-head { display: flex; align-items: baseline; gap: 10px; }
+.result-head h2 { margin: 0; }
+.result-head .link { margin-left: auto; }
+.result-request { margin: 6px 0 2px; font-weight: 500; }
+#result h3 { margin: 10px 0 4px; font-size: 13px; font-weight: 600; color: #6b6a64; }
+#result ol { margin: 0; padding-left: 22px; max-height: 120px; overflow: auto; }
+#result code { font: 12px Consolas, monospace; color: #6b6a64; }
+#result .actions { margin-top: 10px; }
+#result-summary {
+  max-height: 200px;
+  margin: 8px 0 0;
+  padding: 8px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  background: #f1f0eb;
+  border-radius: 6px;
+}
+
+#log .assistant { color: #ffffff; margin: 4px 0; }
+#log .tool { color: #f0c674; }
+#log .output { color: #9a9990; }
+#log .stdout { color: #c8c7c0; }
+
+#history-box { margin-top: 10px; }
+#history-box summary { cursor: pointer; color: #6b6a64; }
+#history { list-style: none; margin: 6px 0 0; padding: 0; max-height: 180px; overflow: auto; }
+.history-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 4px;
+  text-align: left;
+  overflow: hidden;
+}
+.history-request { flex: none; max-width: 45%; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-item .muted-inline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge { flex: none; padding: 0 6px; border-radius: 4px; font-size: 12px; background: #e6e5df; }
+.badge.done { background: #dcefe1; color: #1f6435; }
+.badge.failed, .badge.timed-out { background: #f7e0d8; color: #8a2d0c; }
+.badge.stopped { background: #f5ecd0; color: #7a5a06; }

@@ -10,6 +10,9 @@
 // The prompt is read from stdin (or taken from the argument after -p).
 // For an estimate prompt (it contains "software2 estimate") the default result is a
 // valid estimate JSON, so the app can be tried end to end.
+// For a build prompt (it contains "software2 build") with stream-json, it does a tiny
+// build in its working folder, like the real one would: writes README.md and commits
+// it with git, streaming the tool calls (Write, Bash) and their results.
 //
 // Environment, for test scenarios:
 //   FAKE_CLAUDE_MODE        normal (default) | fail | hang | hang-with-child
@@ -21,8 +24,9 @@
 //   FAKE_CLAUDE_RESULT      the result text (default: a short canned answer)
 //   FAKE_CLAUDE_EXIT_CODE   exit code in normal and fail modes (default 0 / 1)
 
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import path from 'node:path';
 
 const args = process.argv.slice(2);
 const env = process.env;
@@ -96,7 +100,7 @@ async function main() {
     cwd: process.cwd(),
     session_id: sessionId,
     model: 'fake-claude',
-    permissionMode: flag('--dangerously-skip-permissions') ? 'bypassPermissions' : 'default',
+    permissionMode: flag('--dangerously-skip-permissions') ? 'bypassPermissions' : (value('--permission-mode') ?? 'default'),
     tools: ['Bash', 'Read', 'Write', 'Edit'],
     // Not in the real CLI: lets tests see what they were called with.
     fake: { args, promptLength: prompt.length },
@@ -125,7 +129,10 @@ async function main() {
     return;
   }
 
-  if (format === 'stream-json') {
+  if (format === 'stream-json' && prompt.includes('software2 build')) {
+    await out(JSON.stringify(init));
+    await fakeBuild(prompt, sessionId, final);
+  } else if (format === 'stream-json') {
     await out(JSON.stringify(init));
     await out(JSON.stringify(assistant));
     await out(JSON.stringify(final));
@@ -134,5 +141,51 @@ async function main() {
   } else {
     await out(result);
   }
+  process.exitCode = Number(env.FAKE_CLAUDE_EXIT_CODE ?? 0);
+}
+
+/** The build: README.md and one commit in the working folder. */
+async function fakeBuild(prompt, sessionId, final) {
+  const say = (content) => out(JSON.stringify({ type: 'assistant', session_id: sessionId, message: { role: 'assistant', content } }));
+  const toolResult = (id, content, isError = false) =>
+    out(JSON.stringify({
+      type: 'user',
+      session_id: sessionId,
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, is_error: isError }] },
+    }));
+  const request = (prompt.match(/<request>\s*([\s\S]*?)\s*<\/request>/) ?? [])[1] ?? '';
+  const readme = path.join(process.cwd(), 'README.md');
+
+  await say([
+    { type: 'text', text: 'I will write a README and commit it.' },
+    { type: 'tool_use', id: 'tool_1', name: 'Write', input: { file_path: readme, content: '...' } },
+  ]);
+  writeFileSync(readme, `# Fake build
+
+Request: ${request}
+
+Written by test/fake-claude.mjs; nothing real was built.
+`);
+  await toolResult('tool_1', `File created successfully at: ${readme}`);
+
+  const command = 'git add -A && git commit -m "Add README"';
+  await say([{ type: 'tool_use', id: 'tool_2', name: 'Bash', input: { command, description: 'Commit the README' } }]);
+  let output;
+  let failed = false;
+  try {
+    execFileSync('git', ['add', '-A'], { stdio: 'pipe' });
+    output = execFileSync('git', ['-c', 'user.name=fake-claude', '-c', 'user.email=fake@localhost', 'commit', '-m', 'Add README'], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+  } catch (err) {
+    failed = true;
+    output = String(err.stderr || err.message);
+  }
+  await toolResult('tool_2', output, failed);
+
+  const result = env.FAKE_CLAUDE_RESULT ?? 'Built a README (fake). It works: README.md is committed. Not done: everything else.';
+  await say([{ type: 'text', text: result }]);
+  await out(JSON.stringify({ ...final, num_turns: 3, result }));
   process.exitCode = Number(env.FAKE_CLAUDE_EXIT_CODE ?? 0);
 }

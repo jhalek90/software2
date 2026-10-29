@@ -1,15 +1,18 @@
 // Electron main process: one window, settings and the Go/Stop plumbing.
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { runBuild } from './build';
+import { ALLOWED_COMMANDS, runBuild, type BuildEvent } from './build';
 import { Flow } from './flow';
+import { loadHistory } from './history';
 import { runClaude, type RunHandle, type RunOptions, type RunResult } from './runner';
 import { findOnPath, loadSettings, saveSettings, type Settings } from './settings';
 
 let win: BrowserWindow | null = null;
 let currentRun: RunHandle | null = null;
+/** The build in progress, so quitting can wait for it to be stopped and saved. */
+let currentBuild: Promise<unknown> | null = null;
 
 const settingsDir = () => app.getPath('userData');
 
@@ -21,14 +24,18 @@ function setStatus(status: string): void {
   win?.webContents.send('status', status);
 }
 
-/** Runs the CLI with its output streamed into the window's log. Only one run at a
- *  time. The build step (#345) goes through here; the estimate runs from flow.ts. */
-export function startRun(opts: Omit<RunOptions, 'onStdout' | 'onStderr'>): Promise<RunResult> {
+function sendBuild(event: BuildEvent): void {
+  win?.webContents.send('build', event);
+}
+
+/** Runs the CLI so Stop can kill it; output goes to the log unless the caller handles
+ *  it. Only one run at a time. The build goes through here; the estimate runs from flow.ts. */
+export function startRun(opts: RunOptions): Promise<RunResult> {
   if (currentRun) return Promise.reject(new Error('Something is already running.'));
   const run = runClaude({
-    ...opts,
     onStdout: (line) => log('stdout', line),
     onStderr: (line) => log('stderr', line),
+    ...opts,
   });
   currentRun = run;
   return run.done.finally(() => {
@@ -110,12 +117,39 @@ const flow = new Flow({
       buttons: ['Pick again'],
     });
   },
-  build: (job) => runBuild(job, { log, setStatus, startRun }),
+  build: async (job) => {
+    const build = runBuild(job, { log, setStatus, startRun, historyDir: settingsDir(), onEvent: sendBuild });
+    currentBuild = build;
+    try {
+      await build;
+    } finally {
+      currentBuild = null;
+    }
+  },
 });
 
 ipcMain.handle('app:estimate', (_e, request: string) => flow.estimate(String(request ?? '')));
 ipcMain.handle('app:confirm', () => flow.confirm());
 ipcMain.handle('app:cancel', () => flow.cancel());
+
+ipcMain.handle('app:allowedCommands', () => ALLOWED_COMMANDS);
+
+ipcMain.handle('history:list', () => loadHistory(settingsDir()));
+
+// Only folders from the history can be opened, never a path the page makes up.
+const historyEntry = (id: string) => loadHistory(settingsDir()).find((e) => e.id === id);
+const openPath = async (target: string) => {
+  const error = await shell.openPath(target);
+  if (error) log('error', `Could not open ${target}: ${error}`);
+};
+ipcMain.handle('history:openFolder', async (_e, id: string) => {
+  const entry = historyEntry(String(id));
+  if (entry) await openPath(entry.folder);
+});
+ipcMain.handle('history:openReadme', async (_e, id: string) => {
+  const entry = historyEntry(String(id));
+  if (entry) await openPath(path.join(entry.folder, 'README.md'));
+});
 
 ipcMain.handle('app:stop', () => {
   flow.stop();
@@ -135,5 +169,11 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   flow.stop();
   currentRun?.stop();
-  app.quit();
+  if (!currentBuild) {
+    app.quit();
+    return;
+  }
+  // Let the stopped build save its history entry first (bounded, in case it hangs).
+  const giveUp = new Promise((resolve) => setTimeout(resolve, 10_000));
+  Promise.race([currentBuild.catch(() => {}), giveUp]).then(() => app.quit());
 });

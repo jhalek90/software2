@@ -31,7 +31,7 @@ export function checkEmptyFolder(dir: string): FolderResult {
  *  software2 one (for this commit only) when none is set. */
 export async function initRepo(dir: string): Promise<FolderResult> {
   try {
-    await git(dir, ['init']);
+    await git(dir, ['init', '--initial-branch=main']);
     const name = await git(dir, ['config', '--get', 'user.name']).catch(() => '');
     const email = await git(dir, ['config', '--get', 'user.email']).catch(() => '');
     const identity = [
@@ -53,7 +53,8 @@ export async function prepareProjectFolder(dir: string): Promise<FolderResult> {
   return empty.ok ? initRepo(dir) : empty;
 }
 
-function git(cwd: string, args: string[]): Promise<string> {
+/** Runs git in cwd; resolves with stdout. */
+export function git(cwd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile('git', args, { cwd, windowsHide: true, timeout: 30_000 }, (err, stdout, stderr) => {
       if (err) reject(Object.assign(err, { stderr }));

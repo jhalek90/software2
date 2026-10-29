@@ -1,4 +1,4 @@
-// Renderer: the text box, the log and the settings panel. A plain script (no imports);
+// Renderer: the text box, the log, the build result, history and the settings panel. A plain script (no imports);
 // everything it can do goes through window.api from the preload.
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -80,16 +80,33 @@ let working = false;
 /** Statuses that get the spinner and the elapsed seconds. */
 const LONG_STEPS = new Set(['Estimating...', 'Building...']);
 let elapsedTimer: number | undefined;
+/** Set while a build runs: the elapsed time is shown against its estimate. */
+let buildClock: { startedAt: number; estimateMinutes: number; capMinutes: number } | null = null;
+
+function clock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const mm = String(Math.floor((s % 3600) / 60));
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${mm.padStart(2, '0')}:${ss}` : `${mm}:${ss}`;
+}
 
 function showStatus(status: string): void {
   statusText.textContent = status;
   clearInterval(elapsedTimer);
   elapsedEl.textContent = '';
+  elapsedEl.classList.remove('over');
   spinner.hidden = !LONG_STEPS.has(status);
   if (spinner.hidden) return;
   const started = Date.now();
   const tick = () => {
-    elapsedEl.textContent = `${Math.floor((Date.now() - started) / 1000)} s`;
+    if (!buildClock) {
+      elapsedEl.textContent = `${Math.floor((Date.now() - started) / 1000)} s`;
+      return;
+    }
+    const ms = Date.now() - buildClock.startedAt;
+    elapsedEl.textContent = `${clock(ms)} of about ${buildClock.estimateMinutes} min estimated (stops at ${buildClock.capMinutes} min)`;
+    elapsedEl.classList.toggle('over', ms > buildClock.estimateMinutes * 60_000);
   };
   tick();
   elapsedTimer = window.setInterval(tick, 1000);
@@ -140,6 +157,7 @@ async function showConfirm(estimate: Estimate): Promise<void> {
   $('confirm-risks-box').hidden = estimate.risks.length === 0;
   $('confirm-cap').textContent = `The build is stopped after ${s.buildCapMinutes} minutes (build time cap in Settings).`;
   $('confirm-warning').hidden = !s.skipPermissions;
+  $('confirm-limited').hidden = s.skipPermissions;
   confirmDialog.returnValue = '';
   confirmDialog.showModal();
 }
@@ -182,6 +200,115 @@ request.addEventListener('keydown', (e) => {
 });
 
 $<HTMLButtonElement>('stop').addEventListener('click', () => window.api.stop());
+
+// The build: its result when it ends, and the history of past builds.
+
+const resultBox = $<HTMLElement>('result');
+const historyList = $<HTMLUListElement>('history');
+const RESULT_TITLES: Record<HistoryEntry['result'], string> = {
+  done: 'Done',
+  stopped: 'Stopped',
+  failed: 'Failed',
+  'timed out': 'Timed out',
+};
+let shownEntry: HistoryEntry | null = null;
+
+function took(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+}
+
+function showResult(entry: HistoryEntry): void {
+  shownEntry = entry;
+  $('result-title').textContent = RESULT_TITLES[entry.result] ?? entry.result;
+  resultBox.dataset.result = entry.result;
+  $('result-meta').textContent =
+    `${new Date(entry.startedAt).toLocaleString()}, took ${took(entry.durationMs)} (estimate ${entry.estimateMinutes} min)`;
+  $('result-request').textContent = entry.request;
+  $('result-folder').textContent = entry.folder;
+  $('result-summary').textContent = entry.summary;
+  const li = (text: string, hash?: string) => {
+    const item = document.createElement('li');
+    if (hash) {
+      const code = document.createElement('code');
+      code.textContent = hash;
+      item.append(code, ' ');
+    }
+    item.append(text);
+    return item;
+  };
+  $('result-commits').replaceChildren(
+    ...(entry.commits.length ? entry.commits.map((c) => li(c.subject, c.hash)) : [li('No commits.')]),
+  );
+  $<HTMLButtonElement>('open-readme').disabled = !entry.hasReadme;
+  resultBox.hidden = false;
+}
+
+function showHistory(entries: HistoryEntry[]): void {
+  $('history-empty').hidden = entries.length > 0;
+  historyList.replaceChildren(
+    ...entries.map((entry) => {
+      const span = (className: string, text: string) => {
+        const el = document.createElement('span');
+        el.className = className;
+        el.textContent = text;
+        return el;
+      };
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'history-item';
+      button.title = entry.folder;
+      button.append(
+        span(`badge ${entry.result.replace(' ', '-')}`, entry.result),
+        span('history-request', entry.request),
+        span('muted-inline', `${new Date(entry.startedAt).toLocaleString()}, ${took(entry.durationMs)}, ${entry.folder}`),
+      );
+      button.addEventListener('click', () => showResult(entry));
+      const item = document.createElement('li');
+      item.append(button);
+      return item;
+    }),
+  );
+}
+
+async function refreshHistory(): Promise<void> {
+  showHistory(await window.api.getHistory());
+}
+
+$<HTMLButtonElement>('result-close').addEventListener('click', () => {
+  resultBox.hidden = true;
+  shownEntry = null;
+});
+$<HTMLButtonElement>('open-folder').addEventListener('click', () => {
+  if (shownEntry) window.api.openFolder(shownEntry.id);
+});
+$<HTMLButtonElement>('open-readme').addEventListener('click', () => {
+  if (shownEntry) window.api.openReadme(shownEntry.id);
+});
+
+window.api.onBuild((event) => {
+  if (event.type === 'started') {
+    resultBox.hidden = true;
+    buildClock = {
+      startedAt: Date.parse(event.startedAt),
+      estimateMinutes: event.estimateMinutes,
+      capMinutes: event.capMinutes,
+    };
+    showStatus('Building...');
+  } else {
+    buildClock = null;
+    showResult(event.entry);
+    refreshHistory();
+  }
+});
+
+refreshHistory();
+window.api.allowedCommands().then((commands) => {
+  const words = commands.length < 2 ? commands.join('') : `${commands.slice(0, -1).join(', ')} and ${commands.at(-1)}`;
+  document.querySelectorAll('.allowed-commands').forEach((el) => {
+    el.textContent = words;
+  });
+});
 $<HTMLButtonElement>('clear-log').addEventListener('click', () => logEl.replaceChildren());
 
 window.api.onLog(appendLog);

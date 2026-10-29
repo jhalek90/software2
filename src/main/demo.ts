@@ -3,12 +3,13 @@
 //                           %TEMP%\software2-demo-* (never the real settings);
 //                           the folder dialog is skipped and a fresh empty folder is used.
 //   SOFTWARE2_SHOTS=<dir>   demo mode, plus: walk through every state in light and dark,
-//                           save a PNG of each into <dir>, then quit.
+//                           save a PNG of each into <dir> (and reduced-motion ones), write
+//                           the idle CPU use to <dir>\cpu-idle.txt, then quit.
 //   SOFTWARE2_THEME=light|dark   force a theme (otherwise Windows' setting).
 // The fake CLI's FAKE_CLAUDE_DELAY_MS defaults to 1500 here, so each state stays up long
 // enough to see.
 
-import { app, nativeTheme, type BrowserWindow } from 'electron';
+import { app, nativeTheme, type BrowserWindow, type ProcessMetric } from 'electron';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -37,6 +38,9 @@ export function setupDemo(): void {
   const data = path.join(root, 'data');
   app.setPath('userData', data);
   process.env.FAKE_CLAUDE_DELAY_MS ??= '1500';
+  // Shots mode measures idle CPU with the background running, even if other windows
+  // cover this one (Chromium would otherwise count it as hidden and pause it).
+  if (shotsDir) app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
   const theme = process.env.SOFTWARE2_THEME;
   if (theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme;
 
@@ -84,6 +88,14 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
     writeFileSync(path.join(shotsDir, `${nativeTheme.shouldUseDarkColors ? 'dark' : 'light'}-${name}.png`), image.toPNG());
   };
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  // Page errors and warnings show up in the terminal, so a broken state is not missed.
+  wc.on('console-message', (e) => {
+    if (e.level === 'warning' || e.level === 'error') console.error(`Page ${e.level}: ${e.message}`);
+  });
+  const escape = () => {
+    wc.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    wc.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+  };
 
   try {
     for (const theme of ['light', 'dark'] as const) {
@@ -113,17 +125,24 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
 
       await click('#settings-open');
       await shot('settings');
-      await js(`document.getElementById('settings-dialog').close()`);
+      escape(); // Escape closes Settings
+      await until(`!document.getElementById('settings-dialog').open`, 2000);
 
-      // A build that fails: the result card with its "Open full log" link.
+      // A build that fails: the result card with its "Open full log" link. Escape on the
+      // confirm card cancels it first.
       await click('#result-close');
       await js(`document.getElementById('request').value = 'A CSV to JSON converter for the command line'`);
+      await click('#go');
+      await until(`document.getElementById('confirm-dialog').open`);
+      escape();
+      await until(`!document.getElementById('confirm-dialog').open && document.getElementById('status').hidden`, 2000);
       await click('#go');
       await until(`document.getElementById('confirm-dialog').open`);
       process.env.FAKE_CLAUDE_MODE = 'fail'; // only the build fails, not the estimate
       await click('#confirm-dialog button[value="build"]');
       await until(`!document.getElementById('result').hidden`);
       delete process.env.FAKE_CLAUDE_MODE;
+      await sleep(1200); // the background's muted red eases in
       await shot('failed');
 
       // The smallest window: the disclaimer wraps and stays clear of the card.
@@ -133,10 +152,58 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
       await click('#result-close');
       await shot('narrow-empty');
       win.setSize(width, height);
+
+      // prefers-reduced-motion: a still background.
+      wc.debugger.attach();
+      await wc.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+      await shot('reduced-empty');
+      wc.debugger.detach();
     }
+    await measureIdleCpu(win);
   } catch (err) {
     console.error(`Screenshots failed: ${(err as Error).message}`);
     process.exitCode = 1;
   }
   app.quit();
+}
+
+/** Idle CPU use of every app process over 10 s, with the window shown and minimised. */
+async function measureIdleCpu(win: BrowserWindow): Promise<void> {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const frames = () => win.webContents.executeJavaScript('backdrop.framesDrawn') as Promise<number>;
+  // CPU seconds per process from cumulativeCPUUsage, over 10 s: 100% is one core busy.
+  const cpuSeconds = () => new Map(app.getAppMetrics().map((m: ProcessMetric) => [m.pid, { type: m.type, s: m.cpu.cumulativeCPUUsage ?? 0 }]));
+  const sample = async () => {
+    const before = cpuSeconds();
+    const framesBefore = await frames();
+    await sleep(10_000);
+    const drawn = (await frames()) - framesBefore;
+    const parts: string[] = [];
+    let total = 0;
+    for (const [pid, after] of cpuSeconds()) {
+      const pct = ((after.s - (before.get(pid)?.s ?? after.s)) / 10) * 100;
+      total += pct;
+      parts.push(`${after.type} ${pct.toFixed(1)}%`);
+    }
+    return `${total.toFixed(1)}% of one core (${parts.join(', ')}); background frames drawn: ${drawn} in 10 s`;
+  };
+  win.focus();
+  await sleep(2000);
+  const shown = await sample();
+  win.minimize();
+  await sleep(1000);
+  const minimized = await sample();
+  win.restore();
+  await sleep(1000);
+  win.webContents.debugger.attach();
+  await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  const still = await sample();
+  win.webContents.debugger.detach();
+  writeFileSync(
+    path.join(shotsDir!, 'cpu-idle.txt'),
+    `Idle, window shown: ${shown}
+Idle, minimised: ${minimized}
+Idle, reduced motion (still background): ${still}
+`,
+  );
 }

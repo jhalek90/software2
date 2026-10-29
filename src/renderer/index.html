@@ -8,12 +8,34 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="top-actions">
-      <button id="settings-open" type="button" class="icon-button" title="Settings" aria-label="Settings">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.4-1.51 1z"/></svg>
-      </button>
-    </div>
+  <canvas id="backdrop" aria-hidden="true"></canvas>
+
+  <!-- The window is frameless: this is its title bar. The empty middle drags the window
+       (double-click maximises, and Windows snap works); the window buttons are left out of
+       the tab order, like the native ones. -->
+  <header class="titlebar">
+    <svg class="app-mark" viewBox="0 0 256 256" aria-hidden="true">
+      <defs>
+        <linearGradient id="mark-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f8cff"/><stop offset="1" stop-color="#5b3fd9"/></linearGradient>
+      </defs>
+      <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#mark-fill)"/>
+      <text x="128" y="186" text-anchor="middle" font-family="Cascadia Code, Consolas, monospace" font-weight="700" font-size="168" fill="#fff">2</text>
+    </svg>
+    <span class="drag"></span>
+    <button id="settings-open" type="button" class="icon-button" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.4-1.51 1z"/></svg>
+    </button>
+    <span class="titlebar-sep" aria-hidden="true"></span>
+    <button id="win-min" type="button" class="win-button" tabindex="-1" title="Minimise" aria-label="Minimise">
+      <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10"/></svg>
+    </button>
+    <button id="win-max" type="button" class="win-button" tabindex="-1" title="Maximise" aria-label="Maximise">
+      <svg class="when-normal" viewBox="0 0 10 10" aria-hidden="true"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+      <svg class="when-maximized" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 2.5V0.5h7v7h-2M0.5 2.5h7v7h-7z"/></svg>
+    </button>
+    <button id="win-close" type="button" class="win-button close" tabindex="-1" title="Close" aria-label="Close">
+      <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 10M10 0L0 10"/></svg>
+    </button>
   </header>
 
   <main>
@@ -22,9 +44,9 @@
       <p class="hero" id="hero">What do you want to build?</p>
 
       <form id="request-form" class="composer">
-        <textarea id="request" rows="3" spellcheck="true" placeholder="For example: a to-do list web page that remembers my tasks" aria-labelledby="hero" autofocus></textarea>
+        <textarea id="request" rows="3" spellcheck="true" placeholder="For example: a to-do list web page" aria-labelledby="hero" autofocus></textarea>
         <div class="composer-foot">
-          <span class="hint"><kbd>Enter</kbd> to go, <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>
+          <span class="hint"><kbd>Enter</kbd> to build · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>
           <button id="go" type="submit" class="primary go">
             Go
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
@@ -155,6 +177,7 @@
     </form>
   </dialog>
 
+  <script src="background.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

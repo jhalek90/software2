@@ -14,6 +14,11 @@ interface LogEntry {
   text: string;
 }
 
+interface WindowState {
+  maximized: boolean;
+  minimized: boolean;
+}
+
 interface Software2Api {
   getSettings(): Promise<Settings>;
   saveSettings(change: Partial<Settings>): Promise<Settings>;
@@ -39,6 +44,9 @@ interface Software2Api {
   /** What Claude is doing now during a build, one short sentence ("Writing src/app.js"). */
   onActivity(listener: (text: string) => void): void;
   onBuild(listener: (event: BuildEvent) => void): void;
+  /** The custom title bar's buttons (the window is frameless). */
+  windowControl(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
+  onWindowState(listener: (state: WindowState) => void): void;
 }
 
 interface Window {

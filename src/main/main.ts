@@ -57,15 +57,25 @@ export function startRun(opts: RunOptions): Promise<RunResult> {
   });
 }
 
+/** Tells the page whether the window is maximised (for the title bar's button) and
+ *  minimised (the animated background pauses then). */
+function sendWindowState(): void {
+  if (!win) return;
+  win.webContents.send('window-state', { maximized: win.isMaximized(), minimized: win.isMinimized() } satisfies WindowState);
+}
+
 function createWindow(): void {
+  // Frameless: the page draws its own slim title bar (see index.html). Windows keeps the
+  // resize borders, snap and Win+arrow keys since the window stays resizable.
   win = new BrowserWindow({
     width: 900,
     height: 720,
     minWidth: 600,
     minHeight: 480,
     title: 'software(2);',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#202020' : '#f3f3f3',
-    autoHideMenuBar: true,
+    icon: path.join(__dirname, '../../assets/icon.ico'),
+    frame: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#12151b' : '#eef1f6',
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -78,6 +88,11 @@ function createWindow(): void {
   win.webContents.once('did-finish-load', () => {
     if (win) takeShots(win);
   });
+  win.webContents.on('did-finish-load', sendWindowState);
+  win.on('maximize', sendWindowState);
+  win.on('unmaximize', sendWindowState);
+  win.on('minimize', sendWindowState);
+  win.on('restore', sendWindowState);
   win.on('closed', () => {
     win = null;
   });
@@ -167,6 +182,15 @@ ipcMain.handle('app:estimate', (_e, request: string) => {
 });
 ipcMain.handle('app:confirm', () => flow.confirm());
 ipcMain.handle('app:cancel', () => flow.cancel());
+
+ipcMain.handle('window:control', (_e, action: string) => {
+  if (!win) return;
+  if (action === 'minimize') win.minimize();
+  else if (action === 'maximize') {
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  } else if (action === 'close') win.close();
+});
 
 ipcMain.handle('app:allowedCommands', () => ALLOWED_COMMANDS);
 

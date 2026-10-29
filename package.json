@@ -7,6 +7,8 @@
   "scripts": {
     "build": "tsc -p . && node scripts/copy-static.mjs",
     "start": "npm run build && electron .",
+    "launch": "node scripts/launch.mjs",
+    "shortcut": "node scripts/shortcut.mjs",
     "test": "npm run build && node --test \"test/*.test.mjs\""
   },
   "license": "UNLICENSED",

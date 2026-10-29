@@ -14,15 +14,25 @@ real Claude Code is still to be done.
 (or your API billing, if that is how your Claude Code is signed in). A build can run
 for as long as the time cap in Settings, 30 minutes by default.
 
+![Building, light theme](docs/screenshots/light-building.png)
+
 ## How to use it
 
-1. Type what you want, for example "a to-do list web page", and press **Go**
-   (or Ctrl+Enter).
+1. Type what you want, for example "a to-do list web page", and press **Enter** or
+   **Go** (Shift+Enter starts a new line).
 2. Read the estimate and press **Build it**, then pick or create a new, empty folder.
-3. Watch the log. **Stop** kills the build at any time; the time cap kills it too.
-4. When it ends you get Claude's summary, the git commits it made, **Open folder** and
-   **Open README**. Past builds are under **History** at the bottom; click one to see its
-   summary again and open its folder.
+3. Watch the status line under the text box: what Claude is doing right now, the time
+   against the estimate and a thin progress bar. **Stop** kills the build at any time;
+   the time cap kills it too.
+4. When it ends you get Claude's summary, the git commits it made, **Open folder**,
+   **Open README** and **Build something else**. Past builds are behind the clock icon
+   (**History**); click one to see its summary again, or **Open full log** for its log.
+
+The window follows the Windows light or dark theme.
+
+| Estimate | Result (dark theme) |
+| --- | --- |
+| ![The estimate card](docs/screenshots/light-confirm.png) | ![A finished build](docs/screenshots/dark-done.png) |
 
 ## About "build without asking permission"
 
@@ -41,13 +51,13 @@ to work around it. Some builds will not finish that way.
 
 ## What Go does
 
-1. **Estimate** (60 s cap, spinner with elapsed seconds): runs
+1. **Estimate** (60 s cap, spinner with the elapsed time): runs
    `claude -p --output-format json --tools "" --strict-mcp-config --no-session-persistence`
    in a temporary empty folder, so Claude can only answer, not act. It replies with JSON:
    minutes, summary, stack, steps and risks. Code fences and prose around the JSON are
    fine; if no estimate can be read, the raw reply is shown with Retry.
-2. **Confirm**: a dialog with the estimate, the build time cap and, if the
-   permission-skip setting is on, a one-line warning. "Build it" or "Cancel".
+2. **Confirm**: a card with the summary, stack, steps, "About N minutes", the build time
+   cap and, if the permission-skip setting is on, a warning. "Build it" or "Cancel".
 3. **Folder**: a folder dialog opens at the default folder. Pick or create a new, empty
    folder; a non-empty one is refused. It gets `git init` and an empty first commit.
 4. **Build** (time cap from Settings): runs
@@ -58,10 +68,16 @@ to work around it. Some builds will not finish that way.
    word, the estimate as a plan, and the rules (only this folder, no questions, commit
    after each step, a README, run the tests, end with a summary). Edit that file to
    change what Claude is told; it is read at every build.
-5. **Live log**: Claude's text, each tool call as one line (`Edit src/app.js`,
-   `Bash npm test`) and the first lines of each result. The status line shows the
-   elapsed time against the estimate, in red once it runs over.
-6. **Result**: done, stopped, failed or timed out, saved to
+5. **Status line**: one sentence for what Claude is doing now, taken from the stream:
+   tool calls become "Writing src/app.js", "Editing ...", "Reading ...",
+   "Running npm test" or "Committing: <message>"; Claude's text becomes its first short
+   sentence, or "Thinking...". Updates are throttled so it does not flicker. Next to it:
+   the elapsed time against the estimate ("3:12 of ~10 min", then "taking longer than
+   estimated") and a progress bar.
+6. **Full log**: everything (Claude's text, each tool call as one line, the first lines
+   of each result, stderr) goes to a file per run, `%APPDATA%\software2\logs\run-*.log`
+   (the last 100 runs), opened with **Open full log** in History.
+7. **Result**: done, stopped, failed or timed out, saved to
    `%APPDATA%\software2\history.json` (the last 100 builds).
 
 ## Run it in dev
@@ -85,9 +101,23 @@ npm test
 builds and runs the tests (`node:test`). They use `test/fake-claude.mjs`, a tiny
 stand-in for the CLI, never the real one.
 
+### Demo mode and screenshots
+
+Off by default. `SOFTWARE2_DEMO=1` runs the window against `test/fake-claude.mjs`, with
+a throwaway data folder in `%TEMP%\software2-demo-*` (your real settings and history are
+not touched) and no folder dialog. `SOFTWARE2_SHOTS=<folder>` also walks through every
+state (empty, estimating, confirm, building, done, Settings, History) in light and dark,
+saves a PNG of each into that folder and quits. In Git Bash, after `npm run build`:
+
+```
+SOFTWARE2_SHOTS=shots node_modules/electron/dist/electron.exe .
+```
+
+`SOFTWARE2_THEME=light|dark` forces a theme in plain demo mode.
+
 ## Settings
 
-Open **Settings** in the window. They are saved as JSON in the app's own folder,
+Open **Settings** with the gear icon. They are saved as JSON in the app's own folder,
 `%APPDATA%\software2\settings.json`:
 
 - **Claude CLI**: path to `claude.exe` or `claude.cmd`. Found on PATH automatically;
@@ -109,14 +139,17 @@ src/main/flow.ts        Go: estimate -> confirm -> folder -> build (Electron bit
 src/main/estimate.ts    the estimate run and parsing its JSON reply
 src/main/project.ts     the empty-folder check and git init
 src/main/build.ts       runBuild(): the build run, its flags and its prompt
-src/main/stream.ts      stream-json lines -> readable log lines
+src/main/stream.ts      stream-json lines -> readable log lines and the status-line sentence
 src/main/history.ts     history.json: past builds
+src/main/runlog.ts      the full log file per run (userData\logs)
+src/main/demo.ts        demo mode and the screenshot walk-through (off by default)
 prompts/build.md        the build prompt (editable)
 src/preload/preload.ts  the small window.api the page gets
 src/renderer/           index.html, styles.css, renderer.ts (plain script, no framework)
 src/api.d.ts            types for window.api
 test/fake-claude.mjs    fake claude CLI for tests
 test/*.test.mjs         tests (run against the compiled dist/)
+docs/screenshots/       screenshots from the demo mode
 ```
 
 ## Build a Windows exe (later)

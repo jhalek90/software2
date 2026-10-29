@@ -22,3 +22,5 @@ Electron + TypeScript, plain HTML/CSS renderer, Windows only. See README.md for 
 - Build flags are `buildArgs()` in `src/main/build.ts`; the build prompt is `prompts/build.md`, read at every build (CRLF on a Windows checkout, so it is normalised). Its first line "software2 build request." is what makes the fake CLI do its tiny build; keep it.
 - New project repos are `git init --initial-branch=main`; the build prompt tells Claude to merge back into main.
 - Tests don't need the Electron binary: `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci` is enough for `npm test` in a fresh worktree.
+- The window has no log view: the status line sentence is `ParsedLine.activity` (`src/main/stream.ts`) sent via `onActivity`, and the full log goes to `userData\logs\run-*.log` (`src/main/runlog.ts`). The renderer maps flow.ts's `setStatus` words in `onStatus()`, so rewording those needs the renderer too.
+- Check UI changes visually with `SOFTWARE2_SHOTS=<dir>` (demo mode: fake CLI, temp userData, every state in light and dark), then Read the PNGs. In Electron, `rmSync` fails on git's read-only object files; clear the read-only bit first.

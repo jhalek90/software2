@@ -44,6 +44,10 @@ export interface BuildContext {
   historyDir: string;
   /** Start and end of the build, for the window. */
   onEvent?(event: BuildEvent): void;
+  /** What Claude is doing now, one short sentence ("Writing src/app.js"), for the status line. */
+  onActivity?(text: string): void;
+  /** The full log of this run, if one is kept; saved with the history entry. */
+  logFile?: string;
   /** For tests: overrides the cap from settings, and extra env for the CLI. */
   timeoutMs?: number;
   env?: Record<string, string | undefined>;
@@ -109,6 +113,7 @@ export async function runBuild(job: BuildJob, ctx: BuildContext): Promise<Histor
       estimateMinutes: job.estimate.minutes,
       commits: [],
       hasReadme: existsSync(path.join(job.folder, 'README.md')),
+      ...(ctx.logFile ? { logFile: ctx.logFile } : {}),
       ...extra,
     };
     try {
@@ -139,6 +144,7 @@ export async function runBuild(job: BuildJob, ctx: BuildContext): Promise<Histor
     return finish('failed', `Could not read the build prompt: ${(err as Error).message}`);
   }
 
+  ctx.onActivity?.('Starting Claude...');
   const base = (await git(job.folder, ['rev-parse', 'HEAD']).catch(() => '')).trim();
   log('info', `Building in ${job.folder}. Time cap: ${capMinutes} min.`);
   log(
@@ -164,6 +170,7 @@ export async function runBuild(job: BuildJob, ctx: BuildContext): Promise<Histor
         if (e.kind === 'assistant') lastText = e.text;
         log(e.kind, e.text);
       }
+      if (parsed.activity) ctx.onActivity?.(parsed.activity);
       if (parsed.result) streamResult = parsed.result;
     },
     onStderr: (line) => {

@@ -1,32 +1,29 @@
-// Renderer: the text box, the log, the build result, history and the settings panel. A plain script (no imports);
-// everything it can do goes through window.api from the preload.
+// Renderer: the text box, the live status line, the build result, the History drawer and
+// the Settings sheet. A plain script (no imports); everything it can do goes through
+// window.api from the preload. The full log is not shown here: it goes to a file per run.
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const form = $<HTMLFormElement>('request-form');
 const request = $<HTMLTextAreaElement>('request');
-const statusText = $<HTMLSpanElement>('status-text');
-const spinner = $<HTMLSpanElement>('spinner');
-const elapsedEl = $<HTMLSpanElement>('elapsed');
 const goButton = $<HTMLButtonElement>('go');
-const logEl = $<HTMLPreElement>('log');
+const noticeEl = $<HTMLParagraphElement>('notice');
 
-const settingsPanel = $<HTMLElement>('settings');
-const settingsToggle = $<HTMLButtonElement>('settings-toggle');
+const settingsDialog = $<HTMLDialogElement>('settings-dialog');
 const claudePath = $<HTMLInputElement>('claude-path');
 const projectsFolder = $<HTMLInputElement>('projects-folder');
 const buildCap = $<HTMLInputElement>('build-cap');
 const skipPermissions = $<HTMLInputElement>('skip-permissions');
 const savedEl = $<HTMLParagraphElement>('settings-saved');
+const historyDrawer = $<HTMLDialogElement>('history-drawer');
 
-function appendLog(entry: LogEntry): void {
-  const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 4;
-  const line = document.createElement('div');
-  line.className = entry.kind;
-  line.textContent = entry.text;
-  logEl.appendChild(line);
-  if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+/** A short message under the text box, for things that went wrong outside a run. */
+function showNotice(text: string): void {
+  noticeEl.textContent = text;
+  noticeEl.hidden = !text;
 }
+
+// Settings (behind the gear) and History (behind the clock).
 
 function showSettings(s: Settings): void {
   claudePath.value = s.claudePath;
@@ -44,10 +41,26 @@ async function save(change: Partial<Settings>): Promise<void> {
   }
 }
 
-settingsToggle.addEventListener('click', () => {
-  settingsPanel.hidden = !settingsPanel.hidden;
-  settingsToggle.setAttribute('aria-expanded', String(!settingsPanel.hidden));
+$<HTMLButtonElement>('settings-open').addEventListener('click', () => {
+  savedEl.textContent = '';
+  settingsDialog.showModal();
 });
+$<HTMLButtonElement>('history-open').addEventListener('click', async () => {
+  await refreshHistory();
+  historyDrawer.showModal();
+});
+
+// Close buttons, and a click on the dimmed backdrop, close the sheet or drawer.
+for (const dialog of [settingsDialog, historyDrawer]) {
+  dialog.querySelector('[data-close]')?.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) {
+      const r = dialog.getBoundingClientRect();
+      const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      if (!inside) dialog.close();
+    }
+  });
+}
 
 claudePath.addEventListener('change', () => save({ claudePath: claudePath.value }));
 projectsFolder.addEventListener('change', () => save({ projectsFolder: projectsFolder.value }));
@@ -70,18 +83,28 @@ $<HTMLButtonElement>('projects-browse').addEventListener('click', async () => {
   if (picked) await save({ projectsFolder: picked });
 });
 
-// Go: estimate, then the confirm dialog. "Build it" hands over to the main process,
-// which opens the folder dialog and starts the build.
+// The live status line: a spinner, one sentence for what is happening now, the elapsed
+// time (against the estimate while building), a thin progress bar and Stop.
 
-const confirmDialog = $<HTMLDialogElement>('confirm-dialog');
-const failedDialog = $<HTMLDialogElement>('failed-dialog');
-let working = false;
+const statusBox = $<HTMLDivElement>('status');
+const statusText = $<HTMLSpanElement>('status-text');
+const spinner = $<HTMLSpanElement>('spinner');
+const elapsedEl = $<HTMLSpanElement>('elapsed');
+const progressBar = $<HTMLDivElement>('progress-bar');
+const stopButton = $<HTMLButtonElement>('stop');
 
-/** Statuses that get the spinner and the elapsed seconds. */
-const LONG_STEPS = new Set(['Estimating...', 'Building...']);
+type Phase = 'idle' | 'estimating' | 'folder' | 'building';
+let phase: Phase = 'idle';
+let phaseStarted = 0;
 let elapsedTimer: number | undefined;
 /** Set while a build runs: the elapsed time is shown against its estimate. */
 let buildClock: { startedAt: number; estimateMinutes: number; capMinutes: number } | null = null;
+
+/** Activity updates are shown at most this often, so the line does not flicker. */
+const ACTIVITY_MS = 700;
+let activityShownAt = 0;
+let pendingActivity = '';
+let activityTimer: number | undefined;
 
 function clock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -91,26 +114,82 @@ function clock(ms: number): string {
   return h ? `${h}:${mm.padStart(2, '0')}:${ss}` : `${mm}:${ss}`;
 }
 
-function showStatus(status: string): void {
-  statusText.textContent = status;
-  clearInterval(elapsedTimer);
-  elapsedEl.textContent = '';
-  elapsedEl.classList.remove('over');
-  spinner.hidden = !LONG_STEPS.has(status);
-  if (spinner.hidden) return;
-  const started = Date.now();
-  const tick = () => {
-    if (!buildClock) {
-      elapsedEl.textContent = `${Math.floor((Date.now() - started) / 1000)} s`;
-      return;
-    }
+function tick(): void {
+  if (phase === 'estimating') {
+    elapsedEl.textContent = clock(Date.now() - phaseStarted);
+  } else if (phase === 'building' && buildClock) {
     const ms = Date.now() - buildClock.startedAt;
-    elapsedEl.textContent = `${clock(ms)} of about ${buildClock.estimateMinutes} min estimated (stops at ${buildClock.capMinutes} min)`;
-    elapsedEl.classList.toggle('over', ms > buildClock.estimateMinutes * 60_000);
-  };
-  tick();
-  elapsedTimer = window.setInterval(tick, 1000);
+    const estimateMs = Math.max(1, buildClock.estimateMinutes) * 60_000;
+    const over = ms > estimateMs;
+    elapsedEl.textContent = over
+      ? `${clock(ms)} · taking longer than estimated`
+      : `${clock(ms)} of ~${buildClock.estimateMinutes} min`;
+    elapsedEl.title = `Stops at ${buildClock.capMinutes} min (the build time cap in Settings).`;
+    statusBox.classList.toggle('over', over);
+    progressBar.style.width = `${Math.min(100, (ms / estimateMs) * 100)}%`;
+  }
 }
+
+function setPhase(next: Phase, text = ''): void {
+  phase = next;
+  phaseStarted = Date.now();
+  clearInterval(elapsedTimer);
+  clearTimeout(activityTimer);
+  activityTimer = undefined;
+  pendingActivity = '';
+  statusBox.hidden = next === 'idle';
+  statusBox.dataset.phase = next;
+  statusBox.classList.remove('over');
+  spinner.hidden = next === 'folder';
+  stopButton.hidden = next === 'folder';
+  stopButton.disabled = false;
+  statusText.textContent = text;
+  elapsedEl.textContent = '';
+  elapsedEl.title = '';
+  progressBar.style.width = '0%';
+  if (next === 'estimating' || next === 'building') {
+    tick();
+    elapsedTimer = window.setInterval(tick, 1000);
+  }
+}
+
+function showActivity(text: string): void {
+  if (phase !== 'building' || stopButton.disabled) return; // stopButton.disabled: "Stopping..." stays
+  pendingActivity = text;
+  if (activityTimer !== undefined) return;
+  const show = () => {
+    activityTimer = undefined;
+    activityShownAt = Date.now();
+    if (phase === 'building' && !stopButton.disabled && pendingActivity) statusText.textContent = pendingActivity;
+  };
+  const wait = activityShownAt + ACTIVITY_MS - Date.now();
+  if (wait <= 0) show();
+  else activityTimer = window.setTimeout(show, wait);
+}
+
+/** The flow's status words, mapped onto the status line. */
+function onStatus(status: string): void {
+  if (status === 'Estimating...') setPhase('estimating', 'Estimating how long it will take...');
+  else if (status === 'Choose a folder for the project') setPhase('folder', 'Choose or create an empty folder for the project');
+  else if (status === 'Building...') {
+    if (phase !== 'building') setPhase('building', 'Starting the build...');
+  } else setPhase('idle');
+}
+
+stopButton.addEventListener('click', () => {
+  window.api.stop();
+  stopButton.disabled = true;
+  clearTimeout(activityTimer);
+  activityTimer = undefined;
+  statusText.textContent = 'Stopping...';
+});
+
+// Go: estimate, then the confirm card. "Build it" hands over to the main process,
+// which opens the folder dialog and starts the build.
+
+const confirmDialog = $<HTMLDialogElement>('confirm-dialog');
+const failedDialog = $<HTMLDialogElement>('failed-dialog');
+let working = false;
 
 function setWorking(on: boolean): void {
   working = on;
@@ -120,10 +199,12 @@ function setWorking(on: boolean): void {
 async function go(): Promise<void> {
   if (working) return;
   if (!request.value.trim()) {
-    appendLog({ kind: 'error', text: 'Type what you want first.' });
+    showNotice('Type what you want first.');
     request.focus();
     return;
   }
+  showNotice('');
+  resultBox.hidden = true;
   setWorking(true);
   let outcome: EstimateOutcome;
   try {
@@ -150,8 +231,9 @@ function fillList(list: HTMLElement, items: string[]): void {
 async function showConfirm(estimate: Estimate): Promise<void> {
   const s = await window.api.getSettings();
   $('confirm-summary').textContent = estimate.summary;
-  $('confirm-minutes').textContent = `About ${estimate.minutes} minute${estimate.minutes === 1 ? '' : 's'}.`;
-  $('confirm-stack').textContent = estimate.stack ? `Stack: ${estimate.stack}` : '';
+  $('confirm-minutes').textContent = `About ${estimate.minutes} minute${estimate.minutes === 1 ? '' : 's'}`;
+  $('confirm-stack').textContent = estimate.stack;
+  $('confirm-stack').hidden = !estimate.stack;
   fillList($('confirm-steps'), estimate.steps);
   fillList($('confirm-risks'), estimate.risks);
   $('confirm-risks-box').hidden = estimate.risks.length === 0;
@@ -166,12 +248,13 @@ async function showConfirm(estimate: Estimate): Promise<void> {
 confirmDialog.addEventListener('close', async () => {
   if (confirmDialog.returnValue !== 'build') {
     window.api.cancel();
+    request.focus();
     return;
   }
   setWorking(true);
   try {
     const res = await window.api.confirm();
-    if (res.status === 'error') appendLog({ kind: 'error', text: res.error });
+    if (res.status === 'error') showNotice(res.error);
   } finally {
     setWorking(false);
   }
@@ -194,12 +277,13 @@ form.addEventListener('submit', (e) => {
   go();
 });
 
-// Ctrl+Enter submits from the text box.
+// Enter submits; Shift+Enter is a new line.
 request.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.ctrlKey) form.requestSubmit();
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    form.requestSubmit();
+  }
 });
-
-$<HTMLButtonElement>('stop').addEventListener('click', () => window.api.stop());
 
 // The build: its result when it ends, and the history of past builds.
 
@@ -215,15 +299,23 @@ let shownEntry: HistoryEntry | null = null;
 
 function took(ms: number): string {
   const s = Math.round(ms / 1000);
-  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`;
+}
+
+function when(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86_400_000);
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString([], { day: 'numeric', month: 'short', year: days > 300 ? 'numeric' : undefined })} ${time}`;
 }
 
 function showResult(entry: HistoryEntry): void {
   shownEntry = entry;
   $('result-title').textContent = RESULT_TITLES[entry.result] ?? entry.result;
-  resultBox.dataset.result = entry.result;
-  $('result-meta').textContent =
-    `${new Date(entry.startedAt).toLocaleString()}, took ${took(entry.durationMs)} (estimate ${entry.estimateMinutes} min)`;
+  resultBox.dataset.result = entry.result.replace(' ', '-');
+  $('result-meta').textContent = `${when(entry.startedAt)} · took ${took(entry.durationMs)} · estimate ${entry.estimateMinutes} min`;
   $('result-request').textContent = entry.request;
   $('result-folder').textContent = entry.folder;
   $('result-summary').textContent = entry.summary;
@@ -241,6 +333,7 @@ function showResult(entry: HistoryEntry): void {
     ...(entry.commits.length ? entry.commits.map((c) => li(c.subject, c.hash)) : [li('No commits.')]),
   );
   $<HTMLButtonElement>('open-readme').disabled = !entry.hasReadme;
+  showNotice('');
   resultBox.hidden = false;
 }
 
@@ -248,24 +341,35 @@ function showHistory(entries: HistoryEntry[]): void {
   $('history-empty').hidden = entries.length > 0;
   historyList.replaceChildren(
     ...entries.map((entry) => {
-      const span = (className: string, text: string) => {
-        const el = document.createElement('span');
-        el.className = className;
-        el.textContent = text;
-        return el;
+      const el = (tag: string, className: string, text: string) => {
+        const e = document.createElement(tag);
+        e.className = className;
+        e.textContent = text;
+        return e;
       };
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'history-item';
       button.title = entry.folder;
       button.append(
-        span(`badge ${entry.result.replace(' ', '-')}`, entry.result),
-        span('history-request', entry.request),
-        span('muted-inline', `${new Date(entry.startedAt).toLocaleString()}, ${took(entry.durationMs)}, ${entry.folder}`),
+        el('span', 'history-request', entry.request),
+        el('span', 'history-meta', `${when(entry.startedAt)} · ${took(entry.durationMs)}`),
       );
-      button.addEventListener('click', () => showResult(entry));
+      button.addEventListener('click', () => {
+        showResult(entry);
+        historyDrawer.close();
+      });
+      const head = document.createElement('div');
+      head.className = 'history-side';
+      head.append(el('span', `badge ${entry.result.replace(' ', '-')}`, RESULT_TITLES[entry.result] ?? entry.result));
+      if (entry.logFile) {
+        const log = el('button', 'link small', 'Open full log') as HTMLButtonElement;
+        log.type = 'button';
+        log.addEventListener('click', () => window.api.openLog(entry.id));
+        head.append(log);
+      }
       const item = document.createElement('li');
-      item.append(button);
+      item.append(button, head);
       return item;
     }),
   );
@@ -278,6 +382,8 @@ async function refreshHistory(): Promise<void> {
 $<HTMLButtonElement>('result-close').addEventListener('click', () => {
   resultBox.hidden = true;
   shownEntry = null;
+  request.value = '';
+  request.focus();
 });
 $<HTMLButtonElement>('open-folder').addEventListener('click', () => {
   if (shownEntry) window.api.openFolder(shownEntry.id);
@@ -294,31 +400,34 @@ window.api.onBuild((event) => {
       estimateMinutes: event.estimateMinutes,
       capMinutes: event.capMinutes,
     };
-    showStatus('Building...');
+    setPhase('building', 'Starting the build...');
   } else {
     buildClock = null;
+    setPhase('idle');
     showResult(event.entry);
     refreshHistory();
   }
 });
 
-refreshHistory();
 window.api.allowedCommands().then((commands) => {
   const words = commands.length < 2 ? commands.join('') : `${commands.slice(0, -1).join(', ')} and ${commands.at(-1)}`;
   document.querySelectorAll('.allowed-commands').forEach((el) => {
     el.textContent = words;
   });
 });
-$<HTMLButtonElement>('clear-log').addEventListener('click', () => logEl.replaceChildren());
 
-window.api.onLog(appendLog);
-window.api.onStatus(showStatus);
+// The log itself goes to a file; only errors outside a run are worth a line here
+// (during a run they show up in the result).
+window.api.onLog((entry) => {
+  if (entry.kind === 'error' && phase === 'idle' && !working) showNotice(entry.text);
+});
+window.api.onStatus(onStatus);
+window.api.onActivity(showActivity);
 
 window.api.getSettings().then((s) => {
   showSettings(s);
   if (!s.claudePath) {
-    settingsPanel.hidden = false;
-    settingsToggle.setAttribute('aria-expanded', 'true');
     savedEl.textContent = 'Could not find the claude CLI. Set its path above.';
+    settingsDialog.showModal();
   }
 });

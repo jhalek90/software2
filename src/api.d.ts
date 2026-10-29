@@ -33,8 +33,13 @@ interface Software2Api {
   /** Open a past build's folder, or its README.md, by history id. */
   openFolder(id: string): Promise<void>;
   openReadme(id: string): Promise<void>;
+  /** Open a past run's full log file, if it was kept. */
+  openLog(id: string): Promise<void>;
+  /** Every log line; the full log also goes to a file per run (HistoryEntry.logFile). */
   onLog(listener: (entry: LogEntry) => void): void;
   onStatus(listener: (status: string) => void): void;
+  /** What Claude is doing now during a build, one short sentence ("Writing src/app.js"). */
+  onActivity(listener: (text: string) => void): void;
   onBuild(listener: (event: BuildEvent) => void): void;
 }
 

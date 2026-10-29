@@ -1,5 +1,7 @@
 # software2
 
+`software(2);`
+
 A proof-of-concept Windows app with one text box. You type the software you want,
 the app asks Claude Code for a quick time estimate, you confirm and pick a new
 folder, and Claude Code builds it in one go, headless, with local git only.
@@ -14,7 +16,9 @@ real Claude Code is still to be done.
 (or your API billing, if that is how your Claude Code is signed in). A build can run
 for as long as the time cap in Settings, 30 minutes by default.
 
-![Building, light theme](docs/screenshots/light-building.png)
+| Start (light theme) | Start (dark theme) |
+| --- | --- |
+| ![The start page](docs/screenshots/light-empty.png) | ![The start page, dark](docs/screenshots/dark-empty.png) |
 
 ## How to use it
 
@@ -25,14 +29,19 @@ for as long as the time cap in Settings, 30 minutes by default.
    against the estimate and a thin progress bar. **Stop** kills the build at any time;
    the time cap kills it too.
 4. When it ends you get Claude's summary, the git commits it made, **Open folder**,
-   **Open README** and **Build something else**. Past builds are behind the clock icon
-   (**History**); click one to see its summary again, or **Open full log** for its log.
+   **Open README**, **Open full log** (to see what went wrong in a failed run) and
+   **Build something else**. There is no history of past builds: their folders stay
+   where you put them.
 
 The window follows the Windows light or dark theme.
 
-| Estimate | Result (dark theme) |
+| Estimate | Building |
 | --- | --- |
-| ![The estimate card](docs/screenshots/light-confirm.png) | ![A finished build](docs/screenshots/dark-done.png) |
+| ![The estimate card](docs/screenshots/light-confirm.png) | ![Building, the status line](docs/screenshots/light-building.png) |
+
+| Result (dark theme) | A failed build |
+| --- | --- |
+| ![A finished build](docs/screenshots/dark-done.png) | ![A failed build, with Open full log](docs/screenshots/light-failed.png) |
 
 ## About "build without asking permission"
 
@@ -76,9 +85,10 @@ to work around it. Some builds will not finish that way.
    estimated") and a progress bar.
 6. **Full log**: everything (Claude's text, each tool call as one line, the first lines
    of each result, stderr) goes to a file per run, `%APPDATA%\software2\logs\run-*.log`
-   (the last 100 runs), opened with **Open full log** in History.
-7. **Result**: done, stopped, failed or timed out, saved to
-   `%APPDATA%\software2\history.json` (the last 100 builds).
+   (the last 100 runs), opened with **Open full log** on the result card.
+7. **Result**: done, stopped, failed or timed out, shown on the result card. It is not
+   saved anywhere else (an old `history.json` from earlier versions is left alone and
+   no longer read).
 
 ## Run it in dev
 
@@ -104,9 +114,9 @@ stand-in for the CLI, never the real one.
 ### Demo mode and screenshots
 
 Off by default. `SOFTWARE2_DEMO=1` runs the window against `test/fake-claude.mjs`, with
-a throwaway data folder in `%TEMP%\software2-demo-*` (your real settings and history are
-not touched) and no folder dialog. `SOFTWARE2_SHOTS=<folder>` also walks through every
-state (empty, estimating, confirm, building, done, Settings, History) in light and dark,
+a throwaway data folder in `%TEMP%\software2-demo-*` (your real settings are not
+touched) and no folder dialog. `SOFTWARE2_SHOTS=<folder>` also walks through every
+state (empty, estimating, confirm, building, done, Settings, a failed build) in light and dark,
 saves a PNG of each into that folder and quits. In Git Bash, after `npm run build`:
 
 ```
@@ -140,7 +150,6 @@ src/main/estimate.ts    the estimate run and parsing its JSON reply
 src/main/project.ts     the empty-folder check and git init
 src/main/build.ts       runBuild(): the build run, its flags and its prompt
 src/main/stream.ts      stream-json lines -> readable log lines and the status-line sentence
-src/main/history.ts     history.json: past builds
 src/main/runlog.ts      the full log file per run (userData\logs)
 src/main/demo.ts        demo mode and the screenshot walk-through (off by default)
 prompts/build.md        the build prompt (editable)

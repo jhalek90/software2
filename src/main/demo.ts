@@ -125,6 +125,14 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
       await until(`!document.getElementById('result').hidden`);
       delete process.env.FAKE_CLAUDE_MODE;
       await shot('failed');
+
+      // The smallest window: the disclaimer wraps and stays clear of the card.
+      const [width, height] = win.getSize();
+      win.setSize(600, 480);
+      await shot('narrow-failed');
+      await click('#result-close');
+      await shot('narrow-empty');
+      win.setSize(width, height);
     }
   } catch (err) {
     console.error(`Screenshots failed: ${(err as Error).message}`);

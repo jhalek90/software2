@@ -16,6 +16,10 @@ const api: Software2Api = {
   openFolder: () => ipcRenderer.invoke('build:openFolder'),
   openReadme: () => ipcRenderer.invoke('build:openReadme'),
   openLog: () => ipcRenderer.invoke('build:openLog'),
+  windowControl: (action) => ipcRenderer.invoke('window:control', action),
+  onWindowState: (listener) => {
+    ipcRenderer.on('window-state', (_e, state: WindowState) => listener(state));
+  },
   onLog: (listener) => {
     ipcRenderer.on('log', (_e, entry: LogEntry) => listener(entry));
   },

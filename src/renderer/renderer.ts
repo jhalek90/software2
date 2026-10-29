@@ -15,6 +15,39 @@ const buildCap = $<HTMLInputElement>('build-cap');
 const skipPermissions = $<HTMLInputElement>('skip-permissions');
 const savedEl = $<HTMLParagraphElement>('settings-saved');
 
+// The title bar's window buttons (the window is frameless).
+
+$<HTMLButtonElement>('win-min').addEventListener('click', () => window.api.windowControl('minimize'));
+$<HTMLButtonElement>('win-max').addEventListener('click', () => window.api.windowControl('maximize'));
+$<HTMLButtonElement>('win-close').addEventListener('click', () => window.api.windowControl('close'));
+window.api.onWindowState((state) => {
+  document.body.classList.toggle('maximized', state.maximized);
+  const max = $<HTMLButtonElement>('win-max');
+  max.title = state.maximized ? 'Restore' : 'Maximise';
+  max.setAttribute('aria-label', max.title);
+  backdrop.setMinimized(state.minimized);
+});
+
+// The placeholder cycles through a few example requests while the box is empty.
+
+const EXAMPLES = [
+  'a to-do list web page',
+  'a pomodoro timer',
+  'a markdown notes app',
+  'a CSV to JSON converter for the command line',
+  'a tiny expense tracker',
+];
+let example = 0;
+setInterval(() => {
+  if (request.value || document.hidden) return;
+  request.classList.add('placeholder-out');
+  setTimeout(() => {
+    example = (example + 1) % EXAMPLES.length;
+    request.placeholder = `For example: ${EXAMPLES[example]}`;
+    request.classList.remove('placeholder-out');
+  }, 350);
+}, 4000);
+
 /** A short message under the text box, for things that went wrong outside a run. */
 function showNotice(text: string): void {
   noticeEl.textContent = text;
@@ -118,6 +151,7 @@ function tick(): void {
     elapsedEl.title = `Stops at ${buildClock.capMinutes} min (the build time cap in Settings).`;
     statusBox.classList.toggle('over', over);
     progressBar.style.width = `${Math.min(100, (ms / estimateMs) * 100)}%`;
+    backdrop.setProgress(ms / estimateMs);
   }
 }
 
@@ -138,6 +172,9 @@ function setPhase(next: Phase, text = ''): void {
   elapsedEl.textContent = '';
   elapsedEl.title = '';
   progressBar.style.width = '0%';
+  // Idle keeps a result's or a dialog's look ("Ready" comes after the build's result).
+  if (next !== 'idle') backdrop.setScene(next === 'folder' ? 'confirm' : next);
+  else if (resultBox.hidden && !confirmDialog.open && !failedDialog.open) backdrop.setScene('idle');
   if (next === 'estimating' || next === 'building') {
     tick();
     elapsedTimer = window.setInterval(tick, 1000);
@@ -232,12 +269,14 @@ async function showConfirm(estimate: Estimate): Promise<void> {
   $('confirm-warning').hidden = !s.skipPermissions;
   $('confirm-limited').hidden = s.skipPermissions;
   confirmDialog.returnValue = '';
+  backdrop.setScene('confirm');
   confirmDialog.showModal();
 }
 
 // Closing the dialog any other way (Esc) counts as Cancel.
 confirmDialog.addEventListener('close', async () => {
   if (confirmDialog.returnValue !== 'build') {
+    backdrop.setScene('idle');
     window.api.cancel();
     request.focus();
     return;
@@ -256,10 +295,12 @@ function showFailed(message: string, raw?: string): void {
   $('failed-raw').textContent = raw ?? '';
   $('failed-raw-box').hidden = !raw;
   failedDialog.returnValue = '';
+  backdrop.setScene('failed');
   failedDialog.showModal();
 }
 
 failedDialog.addEventListener('close', () => {
+  backdrop.setScene('idle');
   if (failedDialog.returnValue === 'retry') go();
 });
 
@@ -324,10 +365,12 @@ function showResult(entry: BuildOutcome): void {
   $('open-log').hidden = !entry.logFile;
   showNotice('');
   resultBox.hidden = false;
+  backdrop.setScene(entry.result === 'done' ? 'done' : entry.result === 'stopped' ? 'stopped' : 'failed');
 }
 
 $<HTMLButtonElement>('result-close').addEventListener('click', () => {
   resultBox.hidden = true;
+  backdrop.setScene('idle');
   request.value = '';
   request.focus();
 });

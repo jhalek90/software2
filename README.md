@@ -33,7 +33,15 @@ for as long as the time cap in Settings, 30 minutes by default.
    **Build something else**. There is no history of past builds: their folders stay
    where you put them.
 
-The window follows the Windows light or dark theme.
+The window follows the Windows light or dark theme. Its cards are frosted glass over a
+slowly drifting colour background that reacts to what is going on: calm when idle,
+livelier while estimating and building, a green bloom when a build is done and a muted
+red when it failed or was stopped. With Windows' "Show animations" turned off
+(prefers-reduced-motion) the background stands still. It pauses while the window is
+minimised; idle, it uses about a tenth of one CPU core.
+
+The window has its own slim title bar (drag it, double-click to maximise, snap works).
+**Escape** closes Settings and cancels the estimate card.
 
 | Estimate | Building |
 | --- | --- |
@@ -116,8 +124,10 @@ stand-in for the CLI, never the real one.
 Off by default. `SOFTWARE2_DEMO=1` runs the window against `test/fake-claude.mjs`, with
 a throwaway data folder in `%TEMP%\software2-demo-*` (your real settings are not
 touched) and no folder dialog. `SOFTWARE2_SHOTS=<folder>` also walks through every
-state (empty, estimating, confirm, building, done, Settings, a failed build) in light and dark,
-saves a PNG of each into that folder and quits. In Git Bash, after `npm run build`:
+state (empty, estimating, confirm, building, done, Settings, a failed build, the smallest
+window, reduced motion) in light and dark, saves a PNG of each into that folder, writes
+the idle CPU use (window shown, minimised, reduced motion) to `cpu-idle.txt` there and
+quits. Page errors and warnings are printed in the terminal. In Git Bash, after `npm run build`:
 
 ```
 SOFTWARE2_SHOTS=shots node_modules/electron/dist/electron.exe .
@@ -154,11 +164,14 @@ src/main/runlog.ts      the full log file per run (userData\logs)
 src/main/demo.ts        demo mode and the screenshot walk-through (off by default)
 prompts/build.md        the build prompt (editable)
 src/preload/preload.ts  the small window.api the page gets
-src/renderer/           index.html, styles.css, renderer.ts (plain script, no framework)
+src/renderer/           index.html, styles.css, renderer.ts (plain script, no framework),
+                        background.ts (the animated background)
 src/api.d.ts            types for window.api
 test/fake-claude.mjs    fake claude CLI for tests
 test/*.test.mjs         tests (run against the compiled dist/)
 docs/screenshots/       screenshots from the demo mode
+assets/                 the app icon: icon.svg, rendered to icon.png and icon.ico
+scripts/make-icon.mjs   renders the icon (run it with Electron, see the file)
 ```
 
 ## Build a Windows exe (later)

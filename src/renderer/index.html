@@ -38,6 +38,7 @@
       Let Claude build without asking permission (--dangerously-skip-permissions)
     </label>
     <p class="warning">Claude can then run any command on this PC, in and outside the project folder. Only use this for requests you trust.</p>
+    <p class="note">When it is off, Claude can edit files in the project folder and run only <span class="allowed-commands">npm, node, python, dotnet and git</span>. Any other command fails, without a prompt for you to answer, so some builds may not finish.</p>
 
     <p id="settings-saved" class="muted" aria-live="polite"></p>
   </section>
@@ -52,11 +53,35 @@
     </form>
 
     <p id="status"><span id="spinner" class="spinner" hidden></span><span id="status-text" aria-live="polite">Ready</span> <span id="elapsed" class="muted-inline"></span></p>
+
+    <section id="result" hidden aria-labelledby="result-title">
+      <div class="result-head">
+        <h2 id="result-title"></h2>
+        <span id="result-meta" class="muted-inline"></span>
+        <button id="result-close" type="button" class="link">Close</button>
+      </div>
+      <p id="result-request" class="result-request"></p>
+      <p id="result-folder" class="muted-inline"></p>
+      <pre id="result-summary"></pre>
+      <h3>Commits</h3>
+      <ol id="result-commits"></ol>
+      <div class="actions">
+        <button id="open-folder" type="button">Open folder</button>
+        <button id="open-readme" type="button">Open README</button>
+      </div>
+    </section>
+
     <div class="log-head">
       <span>Log</span>
       <button id="clear-log" type="button" class="link">Clear</button>
     </div>
     <pre id="log"></pre>
+
+    <details id="history-box">
+      <summary>History</summary>
+      <p id="history-empty" class="muted">No builds yet.</p>
+      <ul id="history"></ul>
+    </details>
   </main>
 
   <dialog id="confirm-dialog" aria-labelledby="confirm-title">
@@ -72,6 +97,7 @@
       </div>
       <p id="confirm-cap" class="muted"></p>
       <p id="confirm-warning" class="warning-line" hidden>Claude will build without asking permission and can run any command on this PC.</p>
+      <p id="confirm-limited" class="warning-line" hidden>Claude can edit files in the project folder and run only <span class="allowed-commands"></span>. Commands outside that list fail without a prompt for you to answer.</p>
       <div class="actions">
         <button type="submit" value="build" class="primary" autofocus>Build it</button>
         <button type="submit" value="cancel">Cancel</button>

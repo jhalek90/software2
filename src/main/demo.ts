@@ -1,7 +1,7 @@
 // Demo mode, off by default, for trying the look and taking screenshots without Claude.
-//   SOFTWARE2_DEMO=1        run against test/fake-claude.mjs with a throwaway data folder in
-//                           %TEMP% (never the real settings or history); the folder dialog
-//                           is skipped and a fresh empty folder is used.
+//   SOFTWARE2_DEMO=1        run against test/fake-claude.mjs with a throwaway data folder,
+//                           %TEMP%\software2-demo-* (never the real settings or history);
+//                           the folder dialog is skipped and a fresh empty folder is used.
 //   SOFTWARE2_SHOTS=<dir>   demo mode, plus: walk through every state in light and dark,
 //                           save a PNG of each into <dir>, then quit.
 //   SOFTWARE2_THEME=light|dark   force a theme (otherwise Windows' setting).
@@ -9,7 +9,7 @@
 // enough to see.
 
 import { app, nativeTheme, type BrowserWindow } from 'electron';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { addHistory } from './history';
@@ -25,6 +25,15 @@ let folders = 0;
 /** Call before the app is ready. Points userData at a fresh temp folder with demo settings. */
 export function setupDemo(): void {
   if (!DEMO) return;
+  // Electron still holds files in userData when it quits, so earlier demo folders are
+  // removed here instead (best effort: one still in use is skipped).
+  for (const old of readdirSync(os.tmpdir()).filter((f) => f.startsWith('software2-demo-'))) {
+    try {
+      removeTree(path.join(os.tmpdir(), old));
+    } catch {
+      // In use by another demo window.
+    }
+  }
   root = mkdtempSync(path.join(os.tmpdir(), 'software2-demo-'));
   const data = path.join(root, 'data');
   app.setPath('userData', data);
@@ -49,8 +58,20 @@ export function setupDemo(): void {
   // Oldest first, so the newest ends up on top.
   addHistory(data, sample(3, 'A CSV to JSON converter for the command line', 'timed out', 30, 'Demo entry: the time cap ran out.'));
   addHistory(data, sample(2, 'A pomodoro timer web page with a soft bell', 'done', 8, 'Demo entry: a sample build.'));
+}
 
-  app.on('quit', () => rmSync(root, { recursive: true, force: true }));
+/** rmSync, after making every file writable: git's object files are read-only, and
+ *  Electron's rmSync refuses those on Windows. */
+function removeTree(dir: string): void {
+  const writable = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) writable(p);
+      else chmodSync(p, 0o666);
+    }
+  };
+  writable(dir);
+  rmSync(dir, { recursive: true, force: true });
 }
 
 /** A new, empty folder for the next build, instead of the folder dialog. */
@@ -100,6 +121,9 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
       await click('#confirm-dialog button[value="build"]');
       await sleep(7000);
       await shot('building');
+      // The same build as if it had run past its estimate (only the clock is moved back).
+      await js(`buildClock.startedAt -= 3 * 60_000; tick()`);
+      await shot('building-over');
 
       await until(`!document.getElementById('result').hidden`);
       await shot('done');

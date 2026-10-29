@@ -42,6 +42,8 @@
     <div class="stage">
       <h1 class="wordmark" aria-label="software(2);">software<span class="wordmark-accent">(2)</span><span class="wordmark-semi">;</span></h1>
       <p class="hero" id="hero">What do you want to build?</p>
+      <!-- While a build runs, the box is away and this one line says what is being built. -->
+      <p id="building" class="building-line" hidden></p>
 
       <!-- The box reads as a sentence: "build me" and then what to build. The request sent
            on is "Build me " plus what was typed. -->
@@ -222,6 +224,7 @@
   </dialog>
 
   <script src="background.js"></script>
+  <script src="view.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

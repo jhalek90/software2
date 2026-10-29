@@ -1,5 +1,6 @@
 // Renderer: the "build me" box and its Advanced panel, the live status line, the build result and the Settings sheet. A plain script (no imports); everything it can do goes through
 // window.api from the preload. The full log is not shown here: it goes to a file per run.
+// Which of the box, the "Building: ..." line and the result card show is view.ts.
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -246,6 +247,27 @@ function showNotice(text: string): void {
   noticeEl.hidden = !text;
 }
 
+// The view (view.ts): the box while composing, one "Building: ..." line while the
+// build runs, the result card when it ends. The parts slide away and back in (styles.css).
+
+const buildingEl = $<HTMLParagraphElement>('building');
+const stage = document.querySelector<HTMLElement>('.stage')!;
+let view: View = 'compose';
+
+/** asked: the request, for the "Building: ..." line. */
+function viewEvent(event: ViewEvent, asked = ''): void {
+  const next = nextView(view, event);
+  if (next === view) return;
+  if (next === 'building') {
+    buildingEl.textContent = buildingLine(asked);
+    buildingEl.title = buildingEl.textContent;
+    showNotice('');
+  }
+  view = next;
+  stage.dataset.view = view;
+  applyView(view, (id) => $(id));
+}
+
 // Settings (behind the gear).
 
 function showSettings(s: Settings): void {
@@ -391,6 +413,7 @@ function showActivity(text: string): void {
 
 /** The flow's status words, mapped onto the status line. */
 function onStatus(status: string): void {
+  viewEvent({ type: 'status', status }, request.value);
   if (status === 'Estimating...') setPhase('estimating', 'Estimating how long it will take...');
   else if (status === 'Choose a folder for the project') setPhase('folder', 'Choose or create an empty folder for the project');
   else if (status === 'Copying your files') setPhase('folder', 'Copying your files into assets/...');
@@ -427,7 +450,6 @@ async function go(): Promise<void> {
     return;
   }
   showNotice('');
-  resultBox.hidden = true;
   setWorking(true);
   let outcome: EstimateOutcome;
   try {
@@ -488,7 +510,12 @@ confirmDialog.addEventListener('close', async () => {
   setWorking(true);
   try {
     const res = await window.api.confirm();
-    if (res.status === 'error') showNotice(res.error);
+    if (res.status === 'error') {
+      // No build ran (a build that fails ends with its result card instead): the box
+      // comes back as it was, so the request can be tried again.
+      viewEvent({ type: 'confirm-error' });
+      showNotice(res.error);
+    }
   } finally {
     setWorking(false);
   }
@@ -568,15 +595,16 @@ function showResult(entry: BuildOutcome): void {
   $<HTMLButtonElement>('open-readme').disabled = !entry.hasReadme;
   $('open-log').hidden = !entry.logFile;
   showNotice('');
-  resultBox.hidden = false;
+  viewEvent({ type: 'build-ended' });
   backdrop.setScene(entry.result === 'done' ? 'done' : entry.result === 'stopped' ? 'stopped' : 'failed');
 }
 
+// The box comes back empty, with Advanced at its defaults.
 $<HTMLButtonElement>('result-close').addEventListener('click', () => {
-  resultBox.hidden = true;
-  backdrop.setScene('idle');
   request.value = '';
   resetAdvanced();
+  viewEvent({ type: 'result-closed' });
+  backdrop.setScene('idle');
   request.focus();
 });
 $<HTMLButtonElement>('open-folder').addEventListener('click', () => window.api.openFolder());
@@ -585,7 +613,7 @@ $<HTMLButtonElement>('open-log').addEventListener('click', () => window.api.open
 
 window.api.onBuild((event) => {
   if (event.type === 'started') {
-    resultBox.hidden = true;
+    viewEvent({ type: 'build-started' }, event.request);
     buildClock = {
       startedAt: Date.parse(event.startedAt),
       estimateMinutes: event.estimateMinutes,

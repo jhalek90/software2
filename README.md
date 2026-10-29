@@ -42,13 +42,15 @@ for that build under Advanced.
    When anything is set, a chip in the box says so ("45 min · dark and minimal ·
    3 files"), with the panel open or closed. **Build something else** clears it.
 3. Read the estimate and press **Build it**, then pick or create a new, empty folder.
-4. Watch the status line under the text box: what Claude is doing right now, the time
-   against the estimate and a thin progress bar. **Stop** kills the build at any time;
-   the time cap kills it too.
+   Until the folder is picked the box stays, so you can cancel and edit.
+4. Then the box slides away for the whole build. What is left is one quiet line with
+   what is being built ("Building: a pomodoro timer") and the status line: what Claude
+   is doing right now, the time against the estimate and a thin progress bar. **Stop**
+   kills the build at any time; the time cap kills it too.
 5. When it ends you get Claude's summary, the git commits it made, **Open folder**,
    **Open README**, **Open full log** (to see what went wrong in a failed run) and
-   **Build something else**. There is no history of past builds: their folders stay
-   where you put them.
+   **Build something else**, which brings the box back, empty, with Advanced reset.
+   There is no history of past builds: their folders stay where you put them.
 
 The window follows the Windows light or dark theme. Its cards are frosted glass over a
 slowly drifting colour background that reacts to what is going on: calm when idle,
@@ -66,7 +68,7 @@ The window has its own slim title bar (drag it, double-click to maximise, snap w
 
 | Estimate | Building |
 | --- | --- |
-| ![The estimate card](docs/screenshots/light-confirm.png) | ![Building, the status line](docs/screenshots/light-building.png) |
+| ![The estimate card](docs/screenshots/light-confirm.png) | ![Building: the box is away, the status line stays](docs/screenshots/light-building.png) |
 
 | Result (dark theme) | A failed build |
 | --- | --- |

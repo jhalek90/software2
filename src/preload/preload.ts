@@ -13,10 +13,9 @@ const api: Software2Api = {
   cancel: () => ipcRenderer.invoke('app:cancel'),
   stop: () => ipcRenderer.invoke('app:stop'),
   allowedCommands: () => ipcRenderer.invoke('app:allowedCommands'),
-  getHistory: () => ipcRenderer.invoke('history:list'),
-  openFolder: (id) => ipcRenderer.invoke('history:openFolder', id),
-  openReadme: (id) => ipcRenderer.invoke('history:openReadme', id),
-  openLog: (id) => ipcRenderer.invoke('history:openLog', id),
+  openFolder: () => ipcRenderer.invoke('build:openFolder'),
+  openReadme: () => ipcRenderer.invoke('build:openReadme'),
+  openLog: () => ipcRenderer.invoke('build:openLog'),
   onLog: (listener) => {
     ipcRenderer.on('log', (_e, entry: LogEntry) => listener(entry));
   },

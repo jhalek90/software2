@@ -1,5 +1,4 @@
-// Renderer: the text box, the live status line, the build result, the History drawer and
-// the Settings sheet. A plain script (no imports); everything it can do goes through
+// Renderer: the text box, the live status line, the build result and the Settings sheet. A plain script (no imports); everything it can do goes through
 // window.api from the preload. The full log is not shown here: it goes to a file per run.
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -15,7 +14,6 @@ const projectsFolder = $<HTMLInputElement>('projects-folder');
 const buildCap = $<HTMLInputElement>('build-cap');
 const skipPermissions = $<HTMLInputElement>('skip-permissions');
 const savedEl = $<HTMLParagraphElement>('settings-saved');
-const historyDrawer = $<HTMLDialogElement>('history-drawer');
 
 /** A short message under the text box, for things that went wrong outside a run. */
 function showNotice(text: string): void {
@@ -23,7 +21,7 @@ function showNotice(text: string): void {
   noticeEl.hidden = !text;
 }
 
-// Settings (behind the gear) and History (behind the clock).
+// Settings (behind the gear).
 
 function showSettings(s: Settings): void {
   claudePath.value = s.claudePath;
@@ -45,22 +43,15 @@ $<HTMLButtonElement>('settings-open').addEventListener('click', () => {
   savedEl.textContent = '';
   settingsDialog.showModal();
 });
-$<HTMLButtonElement>('history-open').addEventListener('click', async () => {
-  await refreshHistory();
-  historyDrawer.showModal();
+// The close button, and a click on the dimmed backdrop, close the sheet.
+settingsDialog.querySelector('[data-close]')?.addEventListener('click', () => settingsDialog.close());
+settingsDialog.addEventListener('click', (e) => {
+  if (e.target === settingsDialog) {
+    const r = settingsDialog.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    if (!inside) settingsDialog.close();
+  }
 });
-
-// Close buttons, and a click on the dimmed backdrop, close the sheet or drawer.
-for (const dialog of [settingsDialog, historyDrawer]) {
-  dialog.querySelector('[data-close]')?.addEventListener('click', () => dialog.close());
-  dialog.addEventListener('click', (e) => {
-    if (e.target === dialog) {
-      const r = dialog.getBoundingClientRect();
-      const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-      if (!inside) dialog.close();
-    }
-  });
-}
 
 claudePath.addEventListener('change', () => save({ claudePath: claudePath.value }));
 projectsFolder.addEventListener('change', () => save({ projectsFolder: projectsFolder.value }));
@@ -285,17 +276,15 @@ request.addEventListener('keydown', (e) => {
   }
 });
 
-// The build: its result when it ends, and the history of past builds.
+// The build: its result when it ends.
 
 const resultBox = $<HTMLElement>('result');
-const historyList = $<HTMLUListElement>('history');
-const RESULT_TITLES: Record<HistoryEntry['result'], string> = {
+const RESULT_TITLES: Record<BuildOutcome['result'], string> = {
   done: 'Done',
   stopped: 'Stopped',
   failed: 'Failed',
   'timed out': 'Timed out',
 };
-let shownEntry: HistoryEntry | null = null;
 
 function took(ms: number): string {
   const s = Math.round(ms / 1000);
@@ -311,8 +300,7 @@ function when(iso: string): string {
   return `${d.toLocaleDateString([], { day: 'numeric', month: 'short', year: days > 300 ? 'numeric' : undefined })} ${time}`;
 }
 
-function showResult(entry: HistoryEntry): void {
-  shownEntry = entry;
+function showResult(entry: BuildOutcome): void {
   $('result-title').textContent = RESULT_TITLES[entry.result] ?? entry.result;
   resultBox.dataset.result = entry.result.replace(' ', '-');
   $('result-meta').textContent = `${when(entry.startedAt)} · took ${took(entry.durationMs)} · estimate ${entry.estimateMinutes} min`;
@@ -333,64 +321,19 @@ function showResult(entry: HistoryEntry): void {
     ...(entry.commits.length ? entry.commits.map((c) => li(c.subject, c.hash)) : [li('No commits.')]),
   );
   $<HTMLButtonElement>('open-readme').disabled = !entry.hasReadme;
+  $('open-log').hidden = !entry.logFile;
   showNotice('');
   resultBox.hidden = false;
 }
 
-function showHistory(entries: HistoryEntry[]): void {
-  $('history-empty').hidden = entries.length > 0;
-  historyList.replaceChildren(
-    ...entries.map((entry) => {
-      const el = (tag: string, className: string, text: string) => {
-        const e = document.createElement(tag);
-        e.className = className;
-        e.textContent = text;
-        return e;
-      };
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'history-item';
-      button.title = entry.folder;
-      button.append(
-        el('span', 'history-request', entry.request),
-        el('span', 'history-meta', `${when(entry.startedAt)} · ${took(entry.durationMs)}`),
-      );
-      button.addEventListener('click', () => {
-        showResult(entry);
-        historyDrawer.close();
-      });
-      const head = document.createElement('div');
-      head.className = 'history-side';
-      head.append(el('span', `badge ${entry.result.replace(' ', '-')}`, RESULT_TITLES[entry.result] ?? entry.result));
-      if (entry.logFile) {
-        const log = el('button', 'link small', 'Open full log') as HTMLButtonElement;
-        log.type = 'button';
-        log.addEventListener('click', () => window.api.openLog(entry.id));
-        head.append(log);
-      }
-      const item = document.createElement('li');
-      item.append(button, head);
-      return item;
-    }),
-  );
-}
-
-async function refreshHistory(): Promise<void> {
-  showHistory(await window.api.getHistory());
-}
-
 $<HTMLButtonElement>('result-close').addEventListener('click', () => {
   resultBox.hidden = true;
-  shownEntry = null;
   request.value = '';
   request.focus();
 });
-$<HTMLButtonElement>('open-folder').addEventListener('click', () => {
-  if (shownEntry) window.api.openFolder(shownEntry.id);
-});
-$<HTMLButtonElement>('open-readme').addEventListener('click', () => {
-  if (shownEntry) window.api.openReadme(shownEntry.id);
-});
+$<HTMLButtonElement>('open-folder').addEventListener('click', () => window.api.openFolder());
+$<HTMLButtonElement>('open-readme').addEventListener('click', () => window.api.openReadme());
+$<HTMLButtonElement>('open-log').addEventListener('click', () => window.api.openLog());
 
 window.api.onBuild((event) => {
   if (event.type === 'started') {
@@ -404,8 +347,7 @@ window.api.onBuild((event) => {
   } else {
     buildClock = null;
     setPhase('idle');
-    showResult(event.entry);
-    refreshHistory();
+    showResult(event.outcome);
   }
 });
 

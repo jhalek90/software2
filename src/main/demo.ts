@@ -1,6 +1,6 @@
 // Demo mode, off by default, for trying the look and taking screenshots without Claude.
 //   SOFTWARE2_DEMO=1        run against test/fake-claude.mjs with a throwaway data folder,
-//                           %TEMP%\software2-demo-* (never the real settings or history);
+//                           %TEMP%\software2-demo-* (never the real settings);
 //                           the folder dialog is skipped and a fresh empty folder is used.
 //   SOFTWARE2_SHOTS=<dir>   demo mode, plus: walk through every state in light and dark,
 //                           save a PNG of each into <dir>, then quit.
@@ -12,7 +12,6 @@ import { app, nativeTheme, type BrowserWindow } from 'electron';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { addHistory } from './history';
 import { saveSettings } from './settings';
 
 const shotsDir = process.env.SOFTWARE2_SHOTS;
@@ -42,22 +41,6 @@ export function setupDemo(): void {
   if (theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme;
 
   saveSettings(data, { claudePath: FAKE_CLI, projectsFolder: path.join(root, 'projects') });
-  const day = 24 * 3600_000;
-  const sample = (n: number, request: string, result: 'done' | 'timed out', minutes: number, summary: string) => ({
-    id: `demo-${n}`,
-    request,
-    folder: path.join(root, 'projects', `sample-${n}`),
-    startedAt: new Date(Date.now() - n * day).toISOString(),
-    durationMs: minutes * 60_000,
-    result,
-    summary,
-    estimateMinutes: 10,
-    commits: [],
-    hasReadme: false,
-  });
-  // Oldest first, so the newest ends up on top.
-  addHistory(data, sample(3, 'A CSV to JSON converter for the command line', 'timed out', 30, 'Demo entry: the time cap ran out.'));
-  addHistory(data, sample(2, 'A pomodoro timer web page with a soft bell', 'done', 8, 'Demo entry: a sample build.'));
 }
 
 /** rmSync, after making every file writable: git's object files are read-only, and
@@ -132,9 +115,16 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
       await shot('settings');
       await js(`document.getElementById('settings-dialog').close()`);
 
-      await click('#history-open');
-      await shot('history');
-      await js(`document.getElementById('history-drawer').close()`);
+      // A build that fails: the result card with its "Open full log" link.
+      await click('#result-close');
+      await js(`document.getElementById('request').value = 'A CSV to JSON converter for the command line'`);
+      await click('#go');
+      await until(`document.getElementById('confirm-dialog').open`);
+      process.env.FAKE_CLAUDE_MODE = 'fail'; // only the build fails, not the estimate
+      await click('#confirm-dialog button[value="build"]');
+      await until(`!document.getElementById('result').hidden`);
+      delete process.env.FAKE_CLAUDE_MODE;
+      await shot('failed');
     }
   } catch (err) {
     console.error(`Screenshots failed: ${(err as Error).message}`);

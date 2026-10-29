@@ -3,10 +3,9 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { ALLOWED_COMMANDS, runBuild, type BuildEvent } from './build';
+import { ALLOWED_COMMANDS, runBuild, type BuildEvent, type BuildOutcome } from './build';
 import { DEMO, demoFolder, setupDemo, takeShots } from './demo';
 import { Flow } from './flow';
-import { loadHistory } from './history';
 import { RunLog } from './runlog';
 import { runClaude, type RunHandle, type RunOptions, type RunResult } from './runner';
 import { findOnPath, loadSettings, saveSettings, type Settings } from './settings';
@@ -19,6 +18,8 @@ let currentRun: RunHandle | null = null;
 let currentBuild: Promise<unknown> | null = null;
 /** The full log of the current run (an estimate and its build), one file per Go. */
 let runLog: RunLog | null = null;
+/** The last build that ended: the result card's buttons open its folder, README and log. */
+let lastBuild: BuildOutcome | null = null;
 
 const settingsDir = () => app.getPath('userData');
 
@@ -37,6 +38,7 @@ function setStatus(status: string): void {
 }
 
 function sendBuild(event: BuildEvent): void {
+  lastBuild = event.type === 'ended' ? event.outcome : null;
   win?.webContents.send('build', event);
 }
 
@@ -61,7 +63,7 @@ function createWindow(): void {
     height: 720,
     minWidth: 600,
     minHeight: 480,
-    title: 'software2',
+    title: 'software(2);',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#202020' : '#f3f3f3',
     autoHideMenuBar: true,
     webPreferences: {
@@ -72,7 +74,7 @@ function createWindow(): void {
     },
   });
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
-  if (DEMO) win.setTitle('software2 (demo: fake Claude)');
+  if (DEMO) win.setTitle('software(2); (demo: fake Claude)');
   win.webContents.once('did-finish-load', () => {
     if (win) takeShots(win);
   });
@@ -139,7 +141,6 @@ const flow = new Flow({
       log,
       setStatus,
       startRun,
-      historyDir: settingsDir(),
       onEvent: sendBuild,
       onActivity: setActivity,
       logFile: runLog?.file,
@@ -169,26 +170,20 @@ ipcMain.handle('app:cancel', () => flow.cancel());
 
 ipcMain.handle('app:allowedCommands', () => ALLOWED_COMMANDS);
 
-ipcMain.handle('history:list', () => loadHistory(settingsDir()));
-
-// Only folders from the history can be opened, never a path the page makes up.
-const historyEntry = (id: string) => loadHistory(settingsDir()).find((e) => e.id === id);
+// Only the last build's folder, README and log can be opened, never a path the page makes up.
 const openPath = async (target: string) => {
   const error = await shell.openPath(target);
   if (error) log('error', `Could not open ${target}: ${error}`);
 };
-ipcMain.handle('history:openFolder', async (_e, id: string) => {
-  const entry = historyEntry(String(id));
-  if (entry) await openPath(entry.folder);
+ipcMain.handle('build:openFolder', async () => {
+  if (lastBuild) await openPath(lastBuild.folder);
 });
-ipcMain.handle('history:openReadme', async (_e, id: string) => {
-  const entry = historyEntry(String(id));
-  if (entry) await openPath(path.join(entry.folder, 'README.md'));
+ipcMain.handle('build:openReadme', async () => {
+  if (lastBuild) await openPath(path.join(lastBuild.folder, 'README.md'));
 });
-ipcMain.handle('history:openLog', async (_e, id: string) => {
-  const entry = historyEntry(String(id));
-  if (!entry?.logFile) return;
-  if (existsSync(entry.logFile)) await openPath(entry.logFile);
+ipcMain.handle('build:openLog', async () => {
+  if (!lastBuild?.logFile) return;
+  if (existsSync(lastBuild.logFile)) await openPath(lastBuild.logFile);
   else log('error', 'That log file has been deleted (only the last 100 runs are kept).');
 });
 
@@ -214,7 +209,7 @@ app.on('window-all-closed', () => {
     app.quit();
     return;
   }
-  // Let the stopped build save its history entry first (bounded, in case it hangs).
+  // Let the stopped build finish ending first (bounded, in case it hangs).
   const giveUp = new Promise((resolve) => setTimeout(resolve, 10_000));
   Promise.race([currentBuild.catch(() => {}), giveUp]).then(() => app.quit());
 });

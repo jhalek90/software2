@@ -1,17 +1,39 @@
 // The build step: one headless Claude Code run in the new project folder, its
-// stream-json output turned into a readable log, then the outcome saved to history.
+// stream-json output turned into a readable log, then its outcome for the result card.
 // The flow calls runBuild once the user has confirmed the estimate and the project
 // folder is a fresh git repo. No Electron imports.
 
-import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Estimate } from './estimate';
-import { addHistory, type BuildResult, type Commit, type HistoryEntry } from './history';
 import { git } from './project';
 import type { RunOptions, RunResult } from './runner';
 import type { Settings } from './settings';
 import { parseStreamLine, type StreamResult } from './stream';
+
+export type BuildResult = 'done' | 'stopped' | 'failed' | 'timed out';
+
+export interface Commit {
+  hash: string;
+  subject: string;
+}
+
+/** How a build ended, for the result card. */
+export interface BuildOutcome {
+  request: string;
+  folder: string;
+  /** ISO time the build started. */
+  startedAt: string;
+  durationMs: number;
+  result: BuildResult;
+  /** Claude's final summary, or why it failed. */
+  summary: string;
+  estimateMinutes: number;
+  commits: Commit[];
+  hasReadme: boolean;
+  /** The run's full log (estimate and build), in the app's logs folder. */
+  logFile?: string;
+}
 
 export interface BuildJob {
   /** What the user typed. */
@@ -33,20 +55,18 @@ export type BuildEvent =
       capMinutes: number;
       skipPermissions: boolean;
     }
-  | { type: 'ended'; entry: HistoryEntry };
+  | { type: 'ended'; outcome: BuildOutcome };
 
 export interface BuildContext {
   log(kind: LogEntry['kind'], text: string): void;
   setStatus(text: string): void;
   /** main.ts's startRun: runs the CLI so Stop can kill it. */
   startRun(opts: RunOptions): Promise<RunResult>;
-  /** Where history.json lives (the app's userData folder). */
-  historyDir: string;
   /** Start and end of the build, for the window. */
   onEvent?(event: BuildEvent): void;
   /** What Claude is doing now, one short sentence ("Writing src/app.js"), for the status line. */
   onActivity?(text: string): void;
-  /** The full log of this run, if one is kept; saved with the history entry. */
+  /** The full log of this run, if one is kept; passed on in the outcome. */
   logFile?: string;
   /** For tests: overrides the cap from settings, and extra env for the CLI. */
   timeoutMs?: number;
@@ -96,14 +116,13 @@ export function buildPrompt(template: string, job: BuildJob): string {
   return template.replace(/\r\n/g, '\n').replace(/\{\{(\w+)\}\}/g, (m, key: string) => (key in values ? values[key] : m));
 }
 
-/** Builds job.request in job.folder. Resolves with the history entry when the build has ended. */
-export async function runBuild(job: BuildJob, ctx: BuildContext): Promise<HistoryEntry> {
+/** Builds job.request in job.folder. Resolves with the outcome when the build has ended. */
+export async function runBuild(job: BuildJob, ctx: BuildContext): Promise<BuildOutcome> {
   const { log, setStatus } = ctx;
   const startedAt = new Date();
   const capMinutes = job.settings.buildCapMinutes;
-  const finish = (result: BuildResult, summary: string, extra: Partial<HistoryEntry> = {}): HistoryEntry => {
-    const entry: HistoryEntry = {
-      id: randomUUID(),
+  const finish = (result: BuildResult, summary: string, extra: Partial<BuildOutcome> = {}): BuildOutcome => {
+    const outcome: BuildOutcome = {
       request: job.request,
       folder: job.folder,
       startedAt: startedAt.toISOString(),
@@ -116,15 +135,10 @@ export async function runBuild(job: BuildJob, ctx: BuildContext): Promise<Histor
       ...(ctx.logFile ? { logFile: ctx.logFile } : {}),
       ...extra,
     };
-    try {
-      addHistory(ctx.historyDir, entry);
-    } catch (err) {
-      log('error', `Could not save the history: ${(err as Error).message}`);
-    }
-    log(result === 'done' ? 'info' : 'error', `Build ${result} after ${formatDuration(entry.durationMs)}.`);
+    log(result === 'done' ? 'info' : 'error', `Build ${result} after ${formatDuration(outcome.durationMs)}.`);
     setStatus(`Build ${result}`);
-    ctx.onEvent?.({ type: 'ended', entry });
-    return entry;
+    ctx.onEvent?.({ type: 'ended', outcome });
+    return outcome;
   };
 
   ctx.onEvent?.({

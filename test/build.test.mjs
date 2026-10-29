@@ -1,16 +1,14 @@
 // Build-step tests: stream-json parsing, the flags for both permission settings, the
-// prompt, and whole builds with test/fake-claude.mjs (done, stop, time cap, failure),
-// each saved to history.
+// prompt, and whole builds with test/fake-claude.mjs (done, stop, time cap, failure).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_COMMANDS, PROMPT_FILE, buildArgs, buildPrompt, formatDuration, runBuild } from '../dist/main/build.js';
-import { HISTORY_FILE, HISTORY_MAX, addHistory, loadHistory } from '../dist/main/history.js';
 import { prepareProjectFolder } from '../dist/main/project.js';
 import { runClaude } from '../dist/main/runner.js';
 import { parseStreamLine, toolLine } from '../dist/main/stream.js';
@@ -169,7 +167,7 @@ async function newProject() {
 }
 
 /** runBuild with a startRun like main.ts's; the handle is kept so the test can Stop. */
-function makeCtx({ env, timeoutMs, historyDir = newDir('hist'), promptFile } = {}) {
+function makeCtx({ env, timeoutMs, promptFile } = {}) {
   const calls = { logs: [], statuses: [], events: [], runs: [], handle: null };
   const ctx = {
     log: (kind, text) => calls.logs.push({ kind, text }),
@@ -179,21 +177,23 @@ function makeCtx({ env, timeoutMs, historyDir = newDir('hist'), promptFile } = {
       calls.handle = runClaude(opts);
       return calls.handle.done;
     },
-    historyDir,
     onEvent: (e) => calls.events.push(e),
     timeoutMs,
     env,
     promptFile,
   };
-  return { ctx, calls, historyDir };
+  return { ctx, calls };
 }
 
-test('a build runs headless in the folder, logs readable lines, lists its commits and is saved', async () => {
+test('a build runs headless in the folder, logs readable lines and lists its commits', async () => {
   const dir = await newProject();
-  const { ctx, calls, historyDir } = makeCtx();
+  const { ctx, calls } = makeCtx();
   const entry = await runBuild({ request: 'a to-do list web page', estimate, folder: dir, settings: settings() }, ctx);
 
   assert.equal(entry.result, 'done');
+  assert.equal(entry.request, 'a to-do list web page');
+  assert.equal(entry.folder, dir);
+  assert.ok(Date.parse(entry.startedAt) <= Date.now());
   assert.match(entry.summary, /Built a README \(fake\)/);
   assert.equal(entry.hasReadme, true);
   assert.equal(entry.estimateMinutes, 12);
@@ -219,15 +219,8 @@ test('a build runs headless in the folder, logs readable lines, lists its commit
   assert.deepEqual(calls.events.map((e) => e.type), ['started', 'ended']);
   assert.equal(calls.events[0].estimateMinutes, 12);
   assert.equal(calls.events[0].capMinutes, 30);
-  assert.deepEqual(calls.events[1].entry, entry);
+  assert.deepEqual(calls.events[1].outcome, entry);
   assert.equal(calls.statuses.at(-1), 'Build done');
-
-  const history = loadHistory(historyDir);
-  assert.equal(history.length, 1);
-  assert.deepEqual(history[0], entry);
-  assert.equal(history[0].request, 'a to-do list web page');
-  assert.equal(history[0].folder, dir);
-  assert.ok(Date.parse(history[0].startedAt) <= Date.now());
 });
 
 test('with the permission-skip setting off the run gets acceptEdits and the allow-list', async () => {
@@ -240,9 +233,9 @@ test('with the permission-skip setting off the run gets acceptEdits and the allo
   assert.ok(calls.logs.some((l) => /others fail without a prompt/.test(l.text)));
 });
 
-test('Stop kills the build and saves it as stopped', async () => {
+test('Stop kills the build and ends it as stopped', async () => {
   const dir = await newProject();
-  const { ctx, calls, historyDir } = makeCtx({ env: { FAKE_CLAUDE_MODE: 'hang' } });
+  const { ctx, calls } = makeCtx({ env: { FAKE_CLAUDE_MODE: 'hang' } });
   const pending = runBuild({ request: 'x', estimate, folder: dir, settings: settings() }, ctx);
   await new Promise((r) => setTimeout(r, 500));
   calls.handle.stop();
@@ -250,30 +243,28 @@ test('Stop kills the build and saves it as stopped', async () => {
   assert.equal(entry.result, 'stopped');
   assert.match(entry.summary, /^Stopped after \d+ s\./);
   assert.deepEqual(entry.commits, []);
-  assert.equal(loadHistory(historyDir)[0].result, 'stopped');
   assert.equal(calls.statuses.at(-1), 'Build stopped');
 });
 
 test('the time cap ends the build as timed out', async () => {
   const dir = await newProject();
-  const { ctx, historyDir } = makeCtx({ env: { FAKE_CLAUDE_MODE: 'hang' }, timeoutMs: 400 });
+  const { ctx } = makeCtx({ env: { FAKE_CLAUDE_MODE: 'hang' }, timeoutMs: 400 });
   const started = Date.now();
   const entry = await runBuild({ request: 'x', estimate, folder: dir, settings: settings({ buildCapMinutes: 7 }) }, ctx);
   assert.equal(entry.result, 'timed out');
   assert.match(entry.summary, /7 min time cap ran out/);
   assert.ok(Date.now() - started < 10_000);
-  assert.equal(loadHistory(historyDir)[0].result, 'timed out');
 });
 
 test('a CLI that fails ends the build as failed, with its error in the summary', async () => {
   const dir = await newProject();
-  const { ctx, historyDir } = makeCtx({ env: { FAKE_CLAUDE_MODE: 'fail' } });
+  const { ctx, calls } = makeCtx({ env: { FAKE_CLAUDE_MODE: 'fail' } });
   const entry = await runBuild({ request: 'x', estimate, folder: dir, settings: settings() }, ctx);
   assert.equal(entry.result, 'failed');
   assert.match(entry.summary, /exit code 1/);
   assert.match(entry.summary, /something went wrong/);
   assert.equal(entry.hasReadme, false);
-  assert.equal(loadHistory(historyDir)[0].result, 'failed');
+  assert.deepEqual(calls.events.at(-1), { type: 'ended', outcome: entry });
 });
 
 test('a missing CLI or prompt file fails without running anything', async () => {
@@ -288,38 +279,5 @@ test('a missing CLI or prompt file fails without running anything', async () => 
   assert.equal(entry2.result, 'failed');
   assert.match(entry2.summary, /build prompt/);
   assert.equal(noPrompt.calls.runs.length, 0);
-  assert.equal(loadHistory(noPrompt.historyDir).length, 1);
-});
-
-// History
-
-test('history: newest first, capped, and a broken file reads as empty', () => {
-  const dir = newDir('hist');
-  assert.deepEqual(loadHistory(dir), []);
-  const entry = (i) => ({
-    id: `id${i}`,
-    request: `r${i}`,
-    folder: `C:\\p${i}`,
-    startedAt: new Date(2026, 0, 1, 0, i).toISOString(),
-    durationMs: i * 1000,
-    result: 'done',
-    summary: 's',
-    estimateMinutes: 1,
-    commits: [],
-    hasReadme: true,
-  });
-  addHistory(dir, entry(1));
-  addHistory(dir, entry(2));
-  assert.deepEqual(loadHistory(dir).map((e) => e.id), ['id2', 'id1']);
-  for (let i = 3; i < HISTORY_MAX + 10; i++) addHistory(dir, entry(i));
-  const all = loadHistory(dir);
-  assert.equal(all.length, HISTORY_MAX);
-  assert.equal(all[0].id, `id${HISTORY_MAX + 9}`);
-
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, HISTORY_FILE), '{ not json');
-  assert.deepEqual(loadHistory(dir), []);
-  writeFileSync(path.join(dir, HISTORY_FILE), JSON.stringify([{ nope: 1 }, entry(5)]));
-  assert.deepEqual(loadHistory(dir).map((e) => e.id), ['id5']);
-  assert.ok(existsSync(path.join(dir, HISTORY_FILE)));
+  assert.equal(noPrompt.calls.events.at(-1).outcome, entry2);
 });

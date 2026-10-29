@@ -143,6 +143,8 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
       await shot('confirm');
 
       await click('#confirm-dialog button[value="build"]');
+      // The box (and Advanced with it) is away for the whole build.
+      await until(`document.getElementById('request-form').hidden && !document.getElementById('building').hidden`);
       await sleep(7000);
       await shot('building');
       // The same build as if it had run past its estimate (only the clock is moved back).
@@ -159,7 +161,13 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
 
       // A build that fails: the result card with its "Open full log" link. Escape on the
       // confirm card cancels it first.
+      // "Build something else": the box is back, empty, with Advanced at its defaults.
       await click('#result-close');
+      await until(
+        `!document.getElementById('request-form').hidden && document.getElementById('building').hidden && !document.getElementById('request').value && document.getElementById('adv-chip').hidden`,
+        2000,
+      );
+      await shot('again');
       await js(`document.getElementById('request').value = 'a CSV to JSON converter for the command line'`);
       await click('#go');
       await until(`document.getElementById('confirm-dialog').open`);

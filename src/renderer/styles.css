@@ -288,16 +288,22 @@ main {
   color: var(--text-2);
   margin: -6px 0 8px;
 }
-/* With a result card below, the wordmark gets smaller and the question goes, so the
-   card fits in the window. */
+/* With a result card, the wordmark gets smaller so the card fits in the window. */
 .stage:has(#result:not([hidden])) .wordmark { font-size: var(--fs-2xl); }
-.stage:has(#result:not([hidden])) .hero { display: none; }
-.stage:has(#result:not([hidden])) .composer textarea { min-height: 26px; }
+/* While a build runs, this one quiet line (in place of the question) says what it builds. */
+.building-line {
+  text-align: center;
+  font: 500 var(--fs-lg)/1.4 var(--font-display);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: -6px 0 4px;
+}
 
 .composer {
   border-radius: 22px;
-  padding: 16px 16px 12px 20px;
-  transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease);
+  padding: 16px 16px 12px 20px; /* its transitions are with the states', further down */
 }
 /* The focus glow: a soft accent halo around the whole card. */
 .composer:focus-within {
@@ -471,11 +477,12 @@ main {
    result card open to their height (so the column glides instead of jumping) and close
    the same way. */
 
-.status, .notice, .result, .hero {
+.status, .notice, .result, .hero, .building-line {
   transition:
     opacity 0.3s var(--ease),
     translate 0.3s var(--ease),
     height 0.3s var(--ease),
+    margin 0.3s var(--ease),
     display 0.3s allow-discrete;
   interpolate-size: allow-keywords;
 }
@@ -484,6 +491,33 @@ main {
 @starting-style {
   .status:not([hidden]), .notice:not([hidden]), .result:not([hidden]) { opacity: 0; translate: 0 8px; height: 0; }
   .hero { opacity: 0; }
+}
+
+/* The question, the box and the "Building: ..." line swap places when a build starts and
+   ends (view.ts). Leaving, they fold to nothing, the column's 16px gap included (the
+   negative margin), so nothing jumps when they are finally taken out. The coming-back
+   half only runs after the first swap (.stage[data-view]), not when the app opens. */
+.composer {
+  overflow: clip;
+  overflow-clip-margin: 24px;
+  transition:
+    border-color 0.25s var(--ease),
+    box-shadow 0.25s var(--ease),
+    opacity 0.35s var(--ease),
+    translate 0.35s var(--ease),
+    height 0.35s var(--ease),
+    padding 0.35s var(--ease),
+    margin 0.35s var(--ease),
+    border-width 0.35s var(--ease),
+    display 0.35s allow-discrete;
+}
+.composer[hidden] { opacity: 0; translate: 0 -12px; height: 0; padding-block: 0; border-block-width: 0; margin-bottom: -16px; }
+.hero[hidden], .building-line[hidden] { opacity: 0; height: 0; margin: 0 0 -16px; }
+.building-line[hidden] { translate: 0 6px; }
+@starting-style {
+  .stage[data-view] .composer:not([hidden]) { opacity: 0; translate: 0 12px; height: 0; padding-block: 0; border-block-width: 0; margin-bottom: -16px; }
+  .stage[data-view] .hero:not([hidden]), .building-line:not([hidden]) { height: 0; margin: 0 0 -16px; }
+  .building-line:not([hidden]) { opacity: 0; translate: 0 6px; }
 }
 
 /* The live status line, a slim glass strip under the text box */

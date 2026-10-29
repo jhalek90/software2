@@ -19,3 +19,6 @@ Electron + TypeScript, plain HTML/CSS renderer, Windows only. See README.md for 
 - npm may skip Electron's download on install; `node node_modules/electron/install.js` fixes "Electron failed to install correctly".
 - `Flow` (`src/main/flow.ts`) gets the Electron parts (dialogs, log, status) as deps so the whole Go flow is tested under Node; the build plugs in at `runBuild()` in `src/main/build.ts`.
 - `--tools ""` (empty string) is how the CLI turns off all built-in tools; the estimate relies on it, and an empty arg is fine through the `.cmd` quoting.
+- Build flags are `buildArgs()` in `src/main/build.ts`; the build prompt is `prompts/build.md`, read at every build (CRLF on a Windows checkout, so it is normalised). Its first line "software2 build request." is what makes the fake CLI do its tiny build; keep it.
+- New project repos are `git init --initial-branch=main`; the build prompt tells Claude to merge back into main.
+- Tests don't need the Electron binary: `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci` is enough for `npm test` in a fresh worktree.

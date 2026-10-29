@@ -485,6 +485,7 @@ main {
     margin 0.3s var(--ease),
     display 0.3s allow-discrete;
   interpolate-size: allow-keywords;
+  min-height: 0; /* a flex item's min-height: auto would stop the fold at its content's height */
 }
 .status, .notice, .result { overflow: clip; overflow-clip-margin: 24px; }
 .status[hidden], .notice[hidden], .result[hidden] { opacity: 0; translate: 0 -4px; height: 0; }
@@ -498,8 +499,8 @@ main {
    negative margin), so nothing jumps when they are finally taken out. The coming-back
    half only runs after the first swap (.stage[data-view]), not when the app opens. */
 .composer {
-  overflow: clip;
-  overflow-clip-margin: 24px;
+  min-height: 0;
+  overflow: clip; /* at its own edge, so the foot does not spill out while it folds (its glow is not clipped) */
   transition:
     border-color 0.25s var(--ease),
     box-shadow 0.25s var(--ease),

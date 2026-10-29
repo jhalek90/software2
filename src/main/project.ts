@@ -32,19 +32,26 @@ export function checkEmptyFolder(dir: string): FolderResult {
 export async function initRepo(dir: string): Promise<FolderResult> {
   try {
     await git(dir, ['init', '--initial-branch=main']);
-    const name = await git(dir, ['config', '--get', 'user.name']).catch(() => '');
-    const email = await git(dir, ['config', '--get', 'user.email']).catch(() => '');
-    const identity = [
-      ...(name.trim() ? [] : ['-c', 'user.name=software2']),
-      ...(email.trim() ? [] : ['-c', 'user.email=software2@localhost']),
-    ];
-    await git(dir, [...identity, 'commit', '--allow-empty', '-m', 'Empty start (software2)']);
+    await git(dir, [...(await identity(dir)), 'commit', '--allow-empty', '-m', 'Empty start (software2)']);
     return { ok: true };
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { stderr?: string };
     if (e.code === 'ENOENT') return { ok: false, error: 'git was not found on PATH. Install Git for Windows and try again.' };
     return { ok: false, error: `git failed in "${dir}": ${(e.stderr || e.message).trim()}` };
   }
+}
+
+/** The user's git identity is used; where none is set, a software2 one (as -c flags). */
+async function identity(dir: string): Promise<string[]> {
+  const name = await git(dir, ['config', '--get', 'user.name']).catch(() => '');
+  const email = await git(dir, ['config', '--get', 'user.email']).catch(() => '');
+  return [...(name.trim() ? [] : ['-c', 'user.name=software2']), ...(email.trim() ? [] : ['-c', 'user.email=software2@localhost'])];
+}
+
+/** Stages everything in dir and commits it with message. */
+export async function commitAll(dir: string, message: string): Promise<void> {
+  await git(dir, ['add', '-A']);
+  await git(dir, [...(await identity(dir)), 'commit', '-m', message]);
 }
 
 /** checkEmptyFolder, then initRepo. */

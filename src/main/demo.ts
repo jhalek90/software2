@@ -2,7 +2,8 @@
 //   SOFTWARE2_DEMO=1        run against test/fake-claude.mjs with a throwaway data folder,
 //                           %TEMP%\software2-demo-* (never the real settings);
 //                           the folder dialog is skipped and a fresh empty folder is used.
-//   SOFTWARE2_SHOTS=<dir>   demo mode, plus: walk through every state in light and dark,
+//   SOFTWARE2_SHOTS=<dir>   demo mode, plus: walk through every state in light and dark
+//                           (with the Advanced panel set and a few sample files added),
 //                           save a PNG of each into <dir> (and reduced-motion ones), write
 //                           the idle CPU use to <dir>\cpu-idle.txt, then quit.
 //   SOFTWARE2_THEME=light|dark   force a theme (otherwise Windows' setting).
@@ -68,6 +69,22 @@ export function demoFolder(): string {
   return dir;
 }
 
+/** A few made-up files for the Advanced panel in shots mode (the app never opens them). */
+function sampleFiles(): string[] {
+  const dir = path.join(root, 'samples');
+  mkdirSync(dir, { recursive: true });
+  const files: [string, number][] = [
+    ['my-cat-on-the-sofa.jpg', 2_400_000],
+    ['my-cat-sleeping.jpg', 1_700_000],
+    ['logo.svg', 6_200],
+  ];
+  return files.map(([name, size]) => {
+    const p = path.join(dir, name);
+    writeFileSync(p, Buffer.alloc(size));
+    return p;
+  });
+}
+
 /** In shots mode: drives the window through each state and saves screenshots, then quits. */
 export async function takeShots(win: BrowserWindow): Promise<void> {
   if (!shotsDir) return;
@@ -97,6 +114,14 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
     wc.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
   };
 
+  const samples = sampleFiles();
+  // The Advanced panel, opened and filled in the way a person would.
+  const fillAdvanced = async () => {
+    await click('#adv-toggle');
+    await js(`advTime.value = '45'; advStyle.value = 'dark and minimal'; renderAdvanced()`);
+    await js(`window.api.inspectFiles(${JSON.stringify(samples)}).then(addFiles)`);
+  };
+
   try {
     for (const theme of ['light', 'dark'] as const) {
       nativeTheme.themeSource = theme;
@@ -105,7 +130,11 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
       await sleep(300);
       await shot('empty');
 
-      await js(`document.getElementById('request').value = 'A to-do list web page that remembers my tasks'`);
+      await fillAdvanced();
+      await js(`document.getElementById('request').value = 'a website about my cat, with a photo gallery'`);
+      await shot('advanced');
+      await click('#adv-toggle'); // closed again: the chip still says what is set
+      await shot('advanced-closed');
       await click('#go');
       await sleep(500);
       await shot('estimating');
@@ -131,7 +160,7 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
       // A build that fails: the result card with its "Open full log" link. Escape on the
       // confirm card cancels it first.
       await click('#result-close');
-      await js(`document.getElementById('request').value = 'A CSV to JSON converter for the command line'`);
+      await js(`document.getElementById('request').value = 'a CSV to JSON converter for the command line'`);
       await click('#go');
       await until(`document.getElementById('confirm-dialog').open`);
       escape();
@@ -151,6 +180,9 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
       await shot('narrow-failed');
       await click('#result-close');
       await shot('narrow-empty');
+      await fillAdvanced();
+      await shot('narrow-advanced');
+      await js('resetAdvanced()');
       win.setSize(width, height);
 
       // prefers-reduced-motion: a still background.

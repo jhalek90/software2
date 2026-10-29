@@ -116,7 +116,7 @@ test('Build it: a non-empty pick is refused, then an empty one is set up and han
 
   assert.equal(calls.builds.length, 1);
   const job = calls.builds[0];
-  assert.equal(job.request, 'a todo app');
+  assert.equal(job.request, 'Build me a todo app', 'the box reads "build me [ ... ]"');
   assert.deepEqual(job.estimate, est.estimate);
   assert.equal(job.folder, empty);
   assert.equal(job.settings.buildCapMinutes, 30);

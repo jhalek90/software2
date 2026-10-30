@@ -1,12 +1,13 @@
 // Electron main process: one window, settings and the Go/Stop plumbing.
 
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { inspectFiles, type AdvancedOptions } from './advanced';
 import { ALLOWED_COMMANDS, runBuild, type BuildEvent, type BuildOutcome } from './build';
 import { DEMO, demoFolder, setupDemo, takeShots } from './demo';
 import { Flow } from './flow';
+import { RunNow } from './howtorun';
 import { RunLog } from './runlog';
 import { runClaude, type RunHandle, type RunOptions, type RunResult } from './runner';
 import { findOnPath, loadSettings, saveSettings, type Settings } from './settings';
@@ -221,6 +222,26 @@ ipcMain.handle('build:openLog', async () => {
   if (!lastBuild?.logFile) return;
   if (existsSync(lastBuild.logFile)) await openPath(lastBuild.logFile);
   else log('error', 'That log file has been deleted (only the last 100 runs are kept).');
+});
+
+// Run now: only what the last build's RUN.json says, in a visible terminal window or the
+// browser. Commands are shown to the person (status 'confirm') before they first run.
+const runNow = new RunNow({
+  openFile: (file) => shell.openPath(file),
+  // A .cmd opened through the shell runs in a new console window of its own: visible, and
+  // closing it stops the app. Nothing is run hidden. Demo mode never runs anything.
+  openTerminal: async (script) => (DEMO ? 'demo mode does not run commands' : shell.openPath(script)),
+  openUrl: (url) => (DEMO ? Promise.resolve() : shell.openExternal(url)),
+  note: (text) => win?.webContents.send('run-note', text),
+  scriptDir: path.join(settingsDir(), 'run'),
+});
+ipcMain.handle('build:runNow', async (_e, confirmed?: boolean) => {
+  const how = lastBuild?.howToRun;
+  if (!lastBuild || how?.source !== 'run.json') return { status: 'error', message: 'There is no RUN.json to run.' };
+  return runNow.run(how.spec, lastBuild.folder, path.basename(lastBuild.folder), confirmed === true);
+});
+ipcMain.handle('app:copy', (_e, text: unknown) => {
+  if (typeof text === 'string' && text.length <= 10_000) clipboard.writeText(text);
 });
 
 ipcMain.handle('app:stop', () => {

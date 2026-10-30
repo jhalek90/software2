@@ -594,10 +594,142 @@ function showResult(entry: BuildOutcome): void {
   );
   $<HTMLButtonElement>('open-readme').disabled = !entry.hasReadme;
   $('open-log').hidden = !entry.logFile;
+  showHowToRun(entry);
   showNotice('');
   viewEvent({ type: 'build-ended' });
   backdrop.setScene(entry.result === 'done' ? 'done' : entry.result === 'stopped' ? 'stopped' : 'failed');
 }
+
+// "How to run it", on a done build's card: RUN.json's steps, commands to copy and Run now;
+// else the README's "How to run" section; else a plain word that there is neither.
+
+/** One line to copy: a label, the text in code, and a Copy button. */
+function codeLine(label: string, text: string): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'code-line';
+  const name = document.createElement('span');
+  name.className = 'code-label';
+  name.textContent = label;
+  const code = document.createElement('code');
+  code.textContent = text;
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'subtle small copy';
+  copy.textContent = 'Copy';
+  copy.setAttribute('aria-label', `Copy ${label.toLowerCase()}`);
+  copy.addEventListener('click', async () => {
+    await window.api.copyText(text);
+    copy.textContent = 'Copied';
+    setTimeout(() => (copy.textContent = 'Copy'), 1500);
+  });
+  row.append(name, code, copy);
+  return row;
+}
+
+/** The lines for a spec: the file (static) or the install, the command and the address. */
+function specLines(spec: RunSpec, folder: string): HTMLElement[] {
+  const lines = [codeLine('Folder', folder)];
+  if (spec.kind === 'static') lines.push(codeLine('Open', spec.open ?? ''));
+  else {
+    if (spec.install) lines.push(codeLine('Install, once', spec.install));
+    lines.push(codeLine('Run', spec.command ?? ''));
+    if (spec.url) lines.push(codeLine('Then open', spec.url));
+  }
+  return lines;
+}
+
+function showHowToRun(entry: BuildOutcome): void {
+  const how = entry.result === 'done' ? entry.howToRun : undefined;
+  const box = $('howto');
+  box.hidden = !how;
+  // The folder is one of the how-to lines then, so it is not repeated at the bottom.
+  $('result-folder').hidden = !!how;
+  $('run-note').textContent = '';
+  if (!how) return;
+  const steps = $('howto-steps');
+  const readme = $('howto-readme');
+  const problem = $('howto-problem');
+  const notes = $('howto-notes');
+  const spec = how.source === 'run.json' ? how.spec : null;
+  steps.replaceChildren(
+    ...(spec?.steps ?? []).map((text) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      return li;
+    }),
+  );
+  steps.hidden = !spec;
+  readme.textContent = how.source === 'readme' ? how.text : '';
+  readme.hidden = how.source !== 'readme';
+  problem.textContent =
+    how.source === 'readme'
+      ? `From the README (${asClause(how.problem)}). Run now needs a RUN.json.`
+      : how.source === 'none'
+        ? `Claude did not say how to run it. ${how.problem}${entry.hasReadme ? ' The README may still explain it.' : ''}`
+        : '';
+  problem.hidden = !problem.textContent;
+  notes.textContent = spec?.notes ?? '';
+  notes.hidden = !notes.textContent;
+  $('howto-lines').replaceChildren(...(spec ? specLines(spec, entry.folder) : [codeLine('Folder', entry.folder)]));
+  $('run-now').hidden = !spec;
+  $('run-now').title = spec?.kind === 'static' ? `Open ${spec.open} in your browser` : 'Run it in a new terminal window';
+  $<HTMLButtonElement>('run-now').disabled = false;
+  $('howto-readme-open').hidden = !!spec || !entry.hasReadme;
+}
+
+/** "There is no RUN.json." -> "there is no RUN.json", to go in brackets. */
+function asClause(text: string): string {
+  return text.replace(/\.$/, '').replace(/^There/, 'there');
+}
+
+const runDialog = $<HTMLDialogElement>('run-dialog');
+const runNote = $('run-note');
+
+async function runNow(confirmed = false): Promise<void> {
+  const button = $<HTMLButtonElement>('run-now');
+  button.disabled = true;
+  try {
+    const res = await window.api.runNow(confirmed);
+    if (res.status === 'confirm') {
+      showRunConfirm(res);
+      return;
+    }
+    runNote.textContent = res.message;
+    runNote.classList.toggle('bad', res.status === 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function showRunConfirm(res: Extract<RunNowResult, { status: 'confirm' }>): void {
+  const name = res.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? res.folder;
+  $('run-title').textContent = `Run this in ${name}?`;
+  $('run-folder').textContent = res.folder;
+  const lines: HTMLElement[] = [];
+  if (res.install) lines.push(codeLine('First', res.install));
+  lines.push(codeLine(res.install ? 'Then' : 'Run', res.command));
+  if (res.url) lines.push(codeLine('Then open', res.url));
+  if (res.installSkipped) {
+    const skipped = document.createElement('p');
+    skipped.className = 'meta';
+    skipped.textContent = `${res.installSkipped} is left out: node_modules is already there.`;
+    lines.push(skipped);
+  }
+  $('run-lines').replaceChildren(...lines);
+  runDialog.returnValue = '';
+  runDialog.showModal();
+}
+
+runDialog.addEventListener('close', () => {
+  if (runDialog.returnValue === 'run') runNow(true);
+});
+$<HTMLButtonElement>('run-now').addEventListener('click', () => runNow());
+$<HTMLButtonElement>('howto-readme-open').addEventListener('click', () => window.api.openReadme());
+window.api.onRunNote((text) => {
+  if (resultBox.hidden) return;
+  runNote.textContent = text;
+  runNote.classList.toggle('bad', /did not answer/.test(text));
+});
 
 // The box comes back empty, with Advanced at its defaults.
 $<HTMLButtonElement>('result-close').addEventListener('click', () => {

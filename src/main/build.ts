@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { designText, filesText, type FileInfo } from './advanced';
 import type { Estimate } from './estimate';
+import { readHowToRun, type HowToRun } from './howtorun';
 import { git } from './project';
 import type { RunOptions, RunResult } from './runner';
 import type { Settings } from './settings';
@@ -32,6 +33,8 @@ export interface BuildOutcome {
   estimateMinutes: number;
   commits: Commit[];
   hasReadme: boolean;
+  /** For a done build: RUN.json, or the README's "How to run" section, or why neither. */
+  howToRun?: HowToRun;
   /** The run's full log (estimate and build), in the app's logs folder. */
   logFile?: string;
 }
@@ -145,6 +148,7 @@ export async function runBuild(job: BuildJob, ctx: BuildContext): Promise<BuildO
       estimateMinutes: job.estimate.minutes,
       commits: [],
       hasReadme: existsSync(path.join(job.folder, 'README.md')),
+      ...(result === 'done' ? { howToRun: readHowToRun(job.folder) } : {}),
       ...(ctx.logFile ? { logFile: ctx.logFile } : {}),
       ...extra,
     };

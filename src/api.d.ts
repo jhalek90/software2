@@ -9,6 +9,9 @@ type BuildOutcome = import('./main/build').BuildOutcome;
 type BuildEvent = import('./main/build').BuildEvent;
 type AdvancedOptions = import('./main/advanced').AdvancedOptions;
 type UserFile = import('./main/advanced').UserFile;
+type HowToRun = import('./main/howtorun').HowToRun;
+type RunSpec = import('./main/howtorun').RunSpec;
+type RunNowResult = import('./main/howtorun').RunNowResult;
 
 /** Files looked at for the Advanced panel, and why any were left out. */
 interface InspectedFiles {
@@ -52,6 +55,12 @@ interface Software2Api {
   openReadme(): Promise<void>;
   /** Open the last build's full log file, if it was kept. */
   openLog(): Promise<void>;
+  /** Run the last build as its RUN.json says. For a command, the first call answers
+   *  'confirm' with the exact commands; call again with confirmed = true to run them. */
+  runNow(confirmed?: boolean): Promise<RunNowResult>;
+  /** Later news from Run now (the url opened, or it did not answer). */
+  onRunNote(listener: (text: string) => void): void;
+  copyText(text: string): Promise<void>;
   /** Every log line; the full log also goes to a file per run (BuildOutcome.logFile). */
   onLog(listener: (entry: LogEntry) => void): void;
   onStatus(listener: (status: string) => void): void;

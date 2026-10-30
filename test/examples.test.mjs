@@ -12,11 +12,13 @@ const ctx = vm.createContext({});
 const src = readFileSync(new URL('../dist/renderer/examples.js', import.meta.url), 'utf8');
 // A top-level const is not a property of the context, so ask the script for it.
 const {
-  EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE, EXAMPLE_ROUND,
-  exampleCycler, exampleGenerator, fillExample, fixArticles,
+  EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE, EXAMPLE_SPIN,
+  EXAMPLE_SLOTTED_EVERY, EXAMPLE_REEL_STAGGER, exampleCycler, exampleGenerator, fillExample,
+  fixArticles, spinFrames,
 } = vm.runInContext(
   `${src}\n({ EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE,
-    EXAMPLE_ROUND, exampleCycler, exampleGenerator, fillExample, fixArticles });`,
+    EXAMPLE_SPIN, EXAMPLE_SLOTTED_EVERY, EXAMPLE_REEL_STAGGER, exampleCycler, exampleGenerator,
+    fillExample, fixArticles, spinFrames });`,
   ctx,
 );
 
@@ -143,13 +145,28 @@ test('a filled slot only ever takes a word from its own list', () => {
   }
 });
 
-test('a few thousand generated examples all follow the style rules, with no repeats', () => {
+test('a few thousand generated examples and their spins all follow the style rules, with no repeats', () => {
+  const patterns = new Map();
   for (const seed of [1, 7, 42, 2026]) {
     const next = exampleGenerator(EXAMPLES, EXAMPLE_SLOTS, seeded(seed));
     const recent = [];
     for (let i = 0; i < 1500; i++) {
-      const text = next();
-      checkStyle(text, `seed ${seed}, example ${i}`);
+      const { entry, text, frames } = next();
+      const where = `seed ${seed}, example ${i}`;
+      checkStyle(text, where);
+      const slotted = entry.includes('{');
+      assert.equal(slotted, (i + 1) % EXAMPLE_SLOTTED_EVERY === 0, `slots or not out of turn: ${entry} (${where})`);
+      if (slotted) {
+        if (!patterns.has(entry)) patterns.set(entry, fillingPattern(entry));
+        assert.equal(frames.length, EXAMPLE_SPIN.length + 1, `spin frames for: ${entry}`);
+        assert.equal(frames.at(-1), text, `the spin does not stop on the example: ${entry}`);
+        for (const frame of frames) {
+          checkStyle(frame, `a spin frame, ${where}`);
+          assert.match(frame, patterns.get(entry), `"${frame}" is not a filling of: ${entry}`);
+        }
+      } else {
+        assert.equal(frames.length, 0, `frames for an entry with no slots: ${entry}`);
+      }
       assert.ok(!recent.includes(text), `"${text}" again within ${recent.length} (seed ${seed})`);
       recent.push(text);
       if (recent.length > 300) recent.shift();
@@ -161,7 +178,7 @@ test('the generator also works with the real random source', () => {
   const next = exampleGenerator();
   let previous;
   for (let i = 0; i < 2000; i++) {
-    const text = next();
+    const { text } = next();
     checkStyle(text, `Math.random, example ${i}`);
     assert.notEqual(text, previous, 'the same example twice in a row');
     previous = text;
@@ -195,8 +212,11 @@ test('the generator re-rolls a filling that is too long, and skips an entry that
   const slots = { word: ['tiny', 'x'.repeat(EXAMPLE_MAX_LENGTH)] };
   const long = `a ${'y'.repeat(EXAMPLE_MAX_LENGTH)}`;
   const next = exampleGenerator(['a {word} game', long, 'a short one'], slots, seeded(5));
-  const shown = Array.from({ length: 30 }, () => next());
-  for (const text of shown) assert.ok(text.length <= EXAMPLE_MAX_LENGTH, text);
+  const shows = Array.from({ length: 30 }, () => next());
+  const shown = shows.map((show) => show.text);
+  for (const text of [...shown, ...shows.flatMap((show) => show.frames)]) {
+    assert.ok(text.length <= EXAMPLE_MAX_LENGTH, text);
+  }
   assert.ok(shown.includes('a tiny game'));
   assert.ok(!shown.includes(long));
 });
@@ -242,19 +262,35 @@ test('a reshuffle that would repeat the last entry moves it out of the first slo
   for (let i = 1; i < shown.length; i++) assert.notEqual(shown[i], shown[i - 1], shown.join(', '));
 });
 
-test('each round spins at 5 to 6 a second for about a second, then slows down to the normal pace', () => {
-  const spin = EXAMPLE_ROUND.slice(0, EXAMPLE_ROUND.findIndex((gap) => gap > 200));
-  for (const gap of spin) assert.ok(1000 / gap >= 5 && 1000 / gap <= 6.5, `${gap} ms is not 5 to 6 a second`);
-  const spinTime = spin.reduce((a, b) => a + b, 0);
-  assert.ok(spinTime >= 800 && spinTime <= 1300, `the spin lasts ${spinTime} ms`);
-  for (let i = 1; i < EXAMPLE_ROUND.length; i++) {
-    assert.ok(EXAMPLE_ROUND[i] >= EXAMPLE_ROUND[i - 1], `the round speeds up at step ${i}`);
-    assert.ok(EXAMPLE_ROUND[i] <= EXAMPLE_PACE, `step ${i} is slower than the normal pace`);
+test('a slot spin flicks by very fast, brakes, then the example stays for two seconds', () => {
+  const fast = EXAMPLE_SPIN.filter((gap) => gap === EXAMPLE_SPIN[0]);
+  assert.ok(1000 / EXAMPLE_SPIN[0] >= 12, `the fast part is ${(1000 / EXAMPLE_SPIN[0]).toFixed(1)} a second`);
+  assert.ok(fast.length >= EXAMPLE_SPIN.length / 2, 'most of the spin is the fast part');
+  for (let i = 1; i < EXAMPLE_SPIN.length; i++) {
+    assert.ok(EXAMPLE_SPIN[i] >= EXAMPLE_SPIN[i - 1], `the spin speeds up at step ${i}`);
   }
-  assert.equal(EXAMPLE_PACE, 4000);
-  assert.equal(EXAMPLE_ROUND.at(-1), EXAMPLE_PACE, 'the round does not end at the normal pace');
-  // The next spin comes about ten seconds after this one has slowed down and landed.
-  const landed = EXAMPLE_ROUND.indexOf(EXAMPLE_PACE);
-  const atPace = EXAMPLE_ROUND.slice(landed).reduce((a, b) => a + b, 0);
-  assert.ok(atPace >= 7000 && atPace <= 12000, `${atPace} ms at the normal pace between spins`);
+  const spinTime = EXAMPLE_SPIN.reduce((a, b) => a + b, 0);
+  assert.ok(spinTime >= 600 && spinTime <= 1500, `the spin lasts ${spinTime} ms`);
+  assert.equal(EXAMPLE_PACE, 2000);
+});
+
+test('each reel shows a new word every frame until it stops, and the reels stop left to right', () => {
+  const slots = { a: ['p', 'q', 'r', 's'], b: ['w', 'x', 'y', 'z'] };
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const frames = spinFrames('a {a} and {b} game', ['p', 'w'], slots, seeded(seed));
+    const last = EXAMPLE_SPIN.length;
+    assert.equal(frames.length, last + 1);
+    assert.equal(frames[last], 'a p and w game');
+    const reels = frames.map((frame) => frame.match(/^a (\w) and (\w) game$/).slice(1));
+    const firstStops = last - EXAMPLE_REEL_STAGGER;
+    for (let f = 0; f < last; f++) {
+      if (f >= firstStops) assert.equal(reels[f][0], 'p', `the first reel moves after it stopped (frame ${f})`);
+      if (f > 0 && f < firstStops) assert.notEqual(reels[f][0], reels[f - 1][0], `the first reel stuck at frame ${f}`);
+      if (f > 0) assert.notEqual(reels[f][1], reels[f - 1][1], `the second reel stuck at frame ${f}`);
+    }
+  }
+});
+
+test('an entry with no slots does not spin', () => {
+  assert.deepEqual([...spinFrames('a plain one', [])], ['a plain one']);
 });

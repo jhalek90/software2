@@ -1143,18 +1143,32 @@ const EXAMPLE_MAX_LENGTH = 60;
 /** How many of the latest examples shown are never shown again this session. */
 const EXAMPLE_RECENT = 400;
 
-/** The normal pace: how long an example stays in the box, in milliseconds. */
-const EXAMPLE_PACE = 4000;
+/** How long an example stays in the box once it is settled, in milliseconds. */
+const EXAMPLE_PACE = 2000;
 
-/** How long each example stays in the box over one round, in milliseconds, repeated for as
- *  long as the app is open: a spin of about a second at 5 to 6 a second, a slowdown that
- *  lands on one, then the normal pace until the next round spins again, about eleven
- *  seconds after this one began. With reduced motion the box keeps the normal pace. */
-const EXAMPLE_ROUND: readonly number[] = [
-  175, 175, 175, 175, 175, 175, // the spin
-  240, 340, 500, 750, // slowing down
-  EXAMPLE_PACE, EXAMPLE_PACE, // the normal pace, then the next spin
+/** How often an entry with slots comes up: every second example, so its spin is seen often
+ *  (in plain shuffled order only about one in five has slots). */
+const EXAMPLE_SLOTTED_EVERY = 2;
+
+/** The gaps between the frames of a slot spin, in milliseconds: the slot words flick by
+ *  very fast, then brake onto the word they stop on. A spin has one more frame than gaps. */
+const EXAMPLE_SPIN: readonly number[] = [
+  60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, // the fast part, about 16 a second
+  80, 110, 150, 210, // braking
 ];
+
+/** With more than one slot, the reels stop left to right, this many frames apart. */
+const EXAMPLE_REEL_STAGGER = 3;
+
+/** One example for the box: the entry it came from, what the box settles on, and for an
+ *  entry with slots what it shows while they spin. */
+interface ExampleShow {
+  entry: string;
+  text: string;
+  /** One per EXAMPLE_SPIN gap plus the last, which is `text`; only the slot words (and an
+   *  "a"/"an" before one) change between frames. Empty for an entry with no slots. */
+  frames: string[];
+}
 
 /** "a" or "an" for the word that follows, by how it sounds: "an 8x8", "a unicorn",
  *  "an SVG", "a UUID", "an hour". */
@@ -1174,6 +1188,32 @@ function fixArticles(text: string): string {
     `${before}${articleFor(word)} ${word}`);
 }
 
+/** The names of an entry's slots, in order. */
+function slotNames(entry: string): string[] {
+  return [...entry.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+}
+
+/** A random word from a slot's list, other than `not` when the list has another; a slot
+ *  with no list keeps its {name}. */
+function pickWord(
+  name: string,
+  slots: Readonly<Record<string, readonly string[]>>,
+  random: () => number,
+  not?: string,
+): string {
+  const words = slots[name];
+  if (!words?.length) return `{${name}}`;
+  let word = words[Math.floor(random() * words.length)];
+  for (let i = 0; word === not && words.length > 1 && i < 10; i++) word = words[Math.floor(random() * words.length)];
+  return word;
+}
+
+/** The entry with its slots filled by these words, in order, and its "a"/"an" fixed. */
+function fillWith(entry: string, words: readonly string[]): string {
+  let i = 0;
+  return fixArticles(entry.replace(/\{(\w+)\}/g, () => words[i++]));
+}
+
 /** One example with each {slot} filled from its word list (a slot with no list is left as
  *  it is) and its "a"/"an" fixed. */
 function fillExample(
@@ -1181,15 +1221,43 @@ function fillExample(
   slots: Readonly<Record<string, readonly string[]>> = EXAMPLE_SLOTS,
   random: () => number = Math.random,
 ): string {
-  const filled = template.replace(/\{(\w+)\}/g, (whole, name: string) => {
-    const words = slots[name];
-    return words?.length ? words[Math.floor(random() * words.length)] : whole;
-  });
-  return fixArticles(filled);
+  return fillWith(template, slotNames(template).map((name) => pickWord(name, slots, random)));
 }
 
-/** Hands out examples in a random order: a fresh shuffle (Fisher-Yates) each pass, every
- *  entry once per pass, and never the same one twice in a row across a reshuffle. */
+/** The frames of a slot spin that stops on `final` (the words of the example), one per
+ *  EXAMPLE_SPIN gap plus the last. Each reel shows a different word every frame until it
+ *  stops; a frame longer than EXAMPLE_MAX_LENGTH is rolled again, or the one before kept. */
+function spinFrames(
+  entry: string,
+  final: readonly string[],
+  slots: Readonly<Record<string, readonly string[]>> = EXAMPLE_SLOTS,
+  random: () => number = Math.random,
+): string[] {
+  const names = slotNames(entry);
+  if (!names.length) return [entry];
+  const last = EXAMPLE_SPIN.length;
+  const frames: string[] = [];
+  let words = [...final];
+  for (let f = 0; f < last; f++) {
+    let frame = '';
+    for (let roll = 0; roll < 10; roll++) {
+      const next = names.map((name, k) =>
+        f >= last - EXAMPLE_REEL_STAGGER * (names.length - 1 - k) ? final[k] : pickWord(name, slots, random, words[k]));
+      const text = fillWith(entry, next);
+      if (text.length <= EXAMPLE_MAX_LENGTH) {
+        words = next;
+        frame = text;
+        break;
+      }
+    }
+    frames.push(frame || frames[frames.length - 1] || fillWith(entry, final));
+  }
+  frames.push(fillWith(entry, final));
+  return frames;
+}
+
+/** Hands out the entries of a list in a random order: a fresh shuffle (Fisher-Yates) each
+ *  pass, every entry once per pass, and never the same one twice in a row across a reshuffle. */
 function exampleCycler(list: readonly string[], random: () => number = Math.random): () => string {
   let deck: string[] = [];
   let next = 0;
@@ -1211,39 +1279,49 @@ function exampleCycler(list: readonly string[], random: () => number = Math.rand
   };
 }
 
-/** What the "build me" box shows next: the entries in exampleCycler's order, each one's
- *  slots filled afresh, re-rolled when the result is longer than EXAMPLE_MAX_LENGTH or was
- *  among the last EXAMPLE_RECENT shown (an entry with no slots is skipped instead). */
+/** What the "build me" box shows next: every EXAMPLE_SLOTTED_EVERY-th one an entry with
+ *  slots, the rest one without, each in exampleCycler's order; slots filled afresh and
+ *  re-rolled when the result is longer than EXAMPLE_MAX_LENGTH or was among the last
+ *  EXAMPLE_RECENT shown (an entry with no slots is skipped instead). */
 function exampleGenerator(
   list: readonly string[] = EXAMPLES,
   slots: Readonly<Record<string, readonly string[]>> = EXAMPLE_SLOTS,
   random: () => number = Math.random,
-): () => string {
-  const nextEntry = exampleCycler(list, random);
+): () => ExampleShow {
+  const withSlots = list.filter((e) => e.includes('{'));
+  const without = list.filter((e) => !e.includes('{'));
+  const nextWith = withSlots.length ? exampleCycler(withSlots, random) : undefined;
+  const nextWithout = without.length ? exampleCycler(without, random) : undefined;
+  let turn = 0;
   const recent: string[] = [];
   const seen = new Set<string>();
-  const remember = (text: string): string => {
+  const show = (entry: string, words: string[]): ExampleShow => {
+    const text = fillWith(entry, words);
     recent.push(text);
     seen.add(text);
     if (recent.length > EXAMPLE_RECENT) seen.delete(recent.shift()!);
-    return text;
+    return { entry, text, frames: words.length ? spinFrames(entry, words, slots, random) : [] };
   };
   return () => {
-    let text = '';
-    let fits = '';
+    turn++;
+    const nextEntry = (turn % EXAMPLE_SLOTTED_EVERY === 0 ? nextWith : nextWithout) ?? nextWith ?? nextWithout!;
+    let last: [string, string[]] = ['', []];
+    let fits: [string, string[]] | undefined;
     // Gives up after a while (only a tiny list gets there) rather than loop forever, and
     // then shows a repeat that fits rather than one that does not.
     for (let tries = 0; tries < 50; tries++) {
       const entry = nextEntry();
       for (let roll = 0; roll < 5; roll++) {
-        text = fillExample(entry, slots, random);
+        const words = slotNames(entry).map((name) => pickWord(name, slots, random));
+        const text = fillWith(entry, words);
+        last = [entry, words];
         if (text.length <= EXAMPLE_MAX_LENGTH) {
-          if (!seen.has(text)) return remember(text);
-          fits = text;
+          if (!seen.has(text)) return show(entry, words);
+          fits = [entry, words];
         }
-        if (!entry.includes('{')) break;
+        if (!words.length) break;
       }
     }
-    return remember(fits || text);
+    return show(...(fits ?? last));
   };
 }

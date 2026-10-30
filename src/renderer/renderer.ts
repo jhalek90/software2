@@ -39,24 +39,42 @@ window.api.onWindowState((state) => {
 });
 
 // The placeholders cycle through examples while their boxes are empty: what to build after
-// "build me" (examples.ts: shuffled each start, slots filled afresh, no repeats), and a
-// design style in the Advanced panel.
+// "build me" (examples.ts: shuffled each start, slots filled afresh, no repeats), which
+// spins through a few quickly every round (EXAMPLE_ROUND), and a design style in the
+// Advanced panel at a steady pace.
+
+/** Puts the next placeholder in an empty box: at once, or fading the old one out first. */
+function swapPlaceholder(box: HTMLTextAreaElement | HTMLInputElement, next: () => string, fade: boolean): void {
+  if (document.hidden || box.value) return;
+  if (!fade) {
+    box.placeholder = next();
+    return;
+  }
+  box.classList.add('placeholder-out');
+  setTimeout(() => {
+    box.placeholder = next();
+    box.classList.remove('placeholder-out');
+  }, 350);
+}
 
 const nextExample = exampleGenerator();
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let exampleStep = 0;
+let exampleGap = reducedMotion.matches ? EXAMPLE_PACE : EXAMPLE_ROUND[0];
+request.placeholder = nextExample();
+/** Shows the next example and keeps it for its turn in the round. Only a change between
+ *  two at the normal pace fades; the spin and its landing swap at once. */
+function flipExample(): void {
+  const gap = reducedMotion.matches ? EXAMPLE_PACE : EXAMPLE_ROUND[++exampleStep % EXAMPLE_ROUND.length];
+  swapPlaceholder(request, nextExample, exampleGap >= EXAMPLE_PACE && gap >= EXAMPLE_PACE);
+  exampleGap = gap;
+  setTimeout(flipExample, gap);
+}
+setTimeout(flipExample, exampleGap);
+
 const STYLES = ['dark and minimal', 'playful, pastel colours', 'like a 90s website', 'clean, lots of white space'];
 let style = 0;
-request.placeholder = nextExample();
-setInterval(() => {
-  if (document.hidden) return;
-  const boxes = [request, advStyle].filter((box) => !box.value);
-  boxes.forEach((box) => box.classList.add('placeholder-out'));
-  setTimeout(() => {
-    style++;
-    request.placeholder = nextExample();
-    advStyle.placeholder = STYLES[style % STYLES.length];
-    boxes.forEach((box) => box.classList.remove('placeholder-out'));
-  }, 350);
-}, 4000);
+setInterval(() => swapPlaceholder(advStyle, () => STYLES[++style % STYLES.length], true), EXAMPLE_PACE);
 
 // Advanced: this run's max run time, a design style and files for the project. The panel
 // is hidden whenever the app opens and nothing in it is saved. When anything is set, a

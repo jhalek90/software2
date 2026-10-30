@@ -39,9 +39,10 @@ window.api.onWindowState((state) => {
 });
 
 // The placeholders cycle through examples while their boxes are empty: what to build after
-// "build me" (examples.ts, shuffled each start), and a design style in the Advanced panel.
+// "build me" (examples.ts: shuffled each start, slots filled afresh, no repeats), and a
+// design style in the Advanced panel.
 
-const nextExample = exampleCycler(EXAMPLES);
+const nextExample = exampleGenerator();
 const STYLES = ['dark and minimal', 'playful, pastel colours', 'like a 90s website', 'clean, lots of white space'];
 let style = 0;
 request.placeholder = nextExample();

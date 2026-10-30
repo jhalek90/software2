@@ -73,6 +73,9 @@ The shortcut runs `scripts\launch.vbs` through `wscript.exe`, which runs
    **Open README**, **Open full log** (to see what went wrong in a failed run) and
    **Build something else**, which brings the box back, empty, with Advanced reset.
    There is no history of past builds: their folders stay where you put them.
+6. A build that is done also gets **How to run it** at the top of the card (see "Run
+   what was built" below): a few numbered steps, the folder, the command or file with
+   **Copy** buttons, and **Run now**.
 
 The window follows the Windows light or dark theme. Its cards are frosted glass over a
 slowly drifting colour background that reacts to what is going on: calm when idle,
@@ -95,6 +98,49 @@ The window has its own slim title bar (drag it, double-click to maximise, snap w
 | Result (dark theme) | A failed build |
 | --- | --- |
 | ![A finished build](docs/screenshots/dark-done.png) | ![A failed build, with Open full log](docs/screenshots/light-failed.png) |
+
+## Run what was built
+
+The build prompt asks Claude to finish by writing `RUN.json` in the project root (and a
+"How to run" section in the README):
+
+```
+{ "kind": "static", "open": "dist/index.html", "steps": ["Open dist/index.html."], "notes": "" }
+{ "kind": "command", "install": "npm install", "command": "npm run dev",
+  "url": "http://localhost:5173", "steps": ["..."], "notes": "" }
+```
+
+When a build is done, the card shows **How to run it** from that file: the steps as a
+numbered list, the folder, the file to open or the install and run commands (each with
+**Copy**), and Claude's notes. If `RUN.json` is missing or broken, it shows the README's
+"How to run" section instead (headings like "How to run", "Getting started" or "Usage"),
+and says why; if that is missing too, it says so plainly and offers **Open README**.
+`RUN.json` is checked first: the file to open must be inside the project folder and
+exist, each command must be one line, and the url must be on this PC (`localhost`).
+
+**Run now**, only when `RUN.json` is good:
+
+- **static**: opens the file with Windows' default app for it (your browser for `.html`).
+- **command**: the first time for a project, a small sheet shows exactly what will run
+  and where ("Run this in my-game?"). Then a new terminal window opens in the project
+  folder and runs the install (only if `node_modules` is missing, for npm, pnpm, yarn
+  and bun; other installs always run) and then the command, showing each one as it runs.
+  Close the window to stop the app. If there is a url, it opens in your browser as soon
+  as it answers (within 30 s, or 5 min when an install runs first); otherwise the card
+  says it did not answer. The same commands for the same project then run without
+  asking again until the app is closed; changed commands are asked about again.
+
+Nothing is ever run that is not in `RUN.json`, and nothing runs hidden. The terminal
+window runs a small batch file the app writes to `%APPDATA%\software2\run` (removed
+after a day). Demo mode never runs a command.
+
+| How to run it: a page to open | How to run it: a command (dark theme) |
+| --- | --- |
+| ![The result card with steps, the file to open and Run now](docs/screenshots/light-done.png) | ![The result card with npm install, npm run dev and the address](docs/screenshots/dark-done-command.png) |
+
+| Run now, the first time | Only the README says how (dark theme) |
+| --- | --- |
+| ![Run this in demo-2? with the exact commands](docs/screenshots/light-run-confirm.png) | ![The README's How to run section on the card](docs/screenshots/dark-done-readme.png) |
 
 ## About "build without asking permission"
 
@@ -132,7 +178,8 @@ to work around it. Some builds will not finish that way.
    `--permission-mode acceptEdits --allowedTools "Bash(npm *)" ...` (see above). The
    prompt goes in through stdin and comes from `prompts/build.md`: the request word for
    word, the design direction, the files in `assets`, the estimate as a plan, and the rules (only this folder, no questions, commit
-   after each step, a README, run the tests, end with a summary). Edit that file to
+   after each step, a README with "How to run", run the tests, write `RUN.json`, end
+   with a summary). Edit that file to
    change what Claude is told; it is read at every build.
 5. **Status line**: one sentence for what Claude is doing now, taken from the stream:
    tool calls become "Writing src/app.js", "Editing ...", "Reading ...",
@@ -143,7 +190,8 @@ to work around it. Some builds will not finish that way.
 6. **Full log**: everything (Claude's text, each tool call as one line, the first lines
    of each result, stderr) goes to a file per run, `%APPDATA%\software2\logs\run-*.log`
    (the last 100 runs), opened with **Open full log** on the result card.
-7. **Result**: done, stopped, failed or timed out, shown on the result card. It is not
+7. **Result**: done, stopped, failed or timed out, shown on the result card, with
+   "How to run it" from `RUN.json` when it is done. It is not
    saved anywhere else (an old `history.json` from earlier versions is left alone and
    no longer read).
 
@@ -176,7 +224,8 @@ Off by default. `SOFTWARE2_DEMO=1` runs the window against `test/fake-claude.mjs
 a throwaway data folder in `%TEMP%\software2-demo-*` (your real settings are not
 touched) and no folder dialog. `SOFTWARE2_SHOTS=<folder>` also walks through every
 state (empty, the Advanced panel with three made-up sample files, open and closed,
-estimating, confirm, building, done, Settings, a failed build, the smallest window,
+estimating, confirm, building, done with a page to open, done with a command and its Run
+now sheet, done with only a README, Settings, a failed build, the smallest window,
 reduced motion) in light and dark, saves a PNG of each into that folder, writes
 the idle CPU use (window shown, minimised, reduced motion) to `cpu-idle.txt` there and
 quits. Page errors and warnings are printed in the terminal. In Git Bash, after `npm run build`:
@@ -212,6 +261,7 @@ src/main/advanced.ts    Advanced: run time, design style, files (checks, copy in
 src/main/estimate.ts    the estimate run and parsing its JSON reply
 src/main/project.ts     the empty-folder check and git init
 src/main/build.ts       runBuild(): the build run, its flags and its prompt
+src/main/howtorun.ts    RUN.json, the README fallback, and Run now
 src/main/stream.ts      stream-json lines -> readable log lines and the status-line sentence
 src/main/runlog.ts      the full log file per run (userData\logs)
 src/main/demo.ts        demo mode and the screenshot walk-through (off by default)

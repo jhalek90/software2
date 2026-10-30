@@ -674,7 +674,7 @@ function showHowToRun(entry: BuildOutcome): void {
   $('run-now').hidden = !spec;
   $('run-now').title = spec?.kind === 'static' ? `Open ${spec.open} in your browser` : 'Run it in a new terminal window';
   $<HTMLButtonElement>('run-now').disabled = false;
-  $('howto-readme-open').hidden = !!spec || !entry.hasReadme;
+  $('howto-readme-open').hidden = how.source !== 'none' || !entry.hasReadme;
 }
 
 /** "There is no RUN.json." -> "there is no RUN.json", to go in brackets. */

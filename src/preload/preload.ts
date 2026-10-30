@@ -19,6 +19,11 @@ const api: Software2Api = {
   openFolder: () => ipcRenderer.invoke('build:openFolder'),
   openReadme: () => ipcRenderer.invoke('build:openReadme'),
   openLog: () => ipcRenderer.invoke('build:openLog'),
+  runNow: (confirmed) => ipcRenderer.invoke('build:runNow', confirmed),
+  onRunNote: (listener) => {
+    ipcRenderer.on('run-note', (_e, text: string) => listener(text));
+  },
+  copyText: (text) => ipcRenderer.invoke('app:copy', text),
   windowControl: (action) => ipcRenderer.invoke('window:control', action),
   onWindowState: (listener) => {
     ipcRenderer.on('window-state', (_e, state: WindowState) => listener(state));

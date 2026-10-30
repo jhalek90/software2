@@ -24,6 +24,11 @@
 //   FAKE_CLAUDE_RESULT      the result text (default: a short canned answer)
 //   FAKE_CLAUDE_EXIT_CODE   exit code in normal and fail modes (default 0 / 1)
 //   FAKE_CLAUDE_PROMPT_FILE write the prompt it got to this file (tests read it back)
+//   FAKE_CLAUDE_RUN         what the build leaves for "How to run it" (default: just the README)
+//     static:  index.html and a RUN.json that opens it
+//     command: a RUN.json with npm install, npm run dev and http://localhost:5173
+//     broken:  a RUN.json that is not JSON, and a README with a "How to run" section
+//     readme:  no RUN.json, a README with a "How to run" section
 
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readdirSync, writeFileSync } from 'node:fs';
@@ -163,6 +168,23 @@ async function fakeBuild(prompt, sessionId, final) {
     { type: 'text', text: 'I will write a README and commit it.' },
     { type: 'tool_use', id: 'tool_1', name: 'Write', input: { file_path: readme, content: '...' } },
   ]);
+  const run = env.FAKE_CLAUDE_RUN ?? '';
+  const howTo = ['broken', 'readme'].includes(run)
+    ? `
+## How to run
+
+1. Open a terminal in this folder.
+2. Run:
+
+\`\`\`
+npm start
+\`\`\`
+
+## Choices
+
+None, it is fake.
+`
+    : '';
   writeFileSync(readme, `# Fake build
 
 Request: ${request}
@@ -170,7 +192,26 @@ ${assets.length ? `
 Files in assets/: ${assets.join(', ')}
 ` : ''}
 Written by test/fake-claude.mjs; nothing real was built.
-`);
+${howTo}`);
+  const runJson = {
+    static: {
+      kind: 'static',
+      open: 'index.html',
+      steps: ['Open index.html in your browser.', 'Click the board to start.'],
+      notes: 'Works offline; nothing to install.',
+    },
+    command: {
+      kind: 'command',
+      install: 'npm install',
+      command: 'npm run dev',
+      url: 'http://localhost:5173',
+      steps: ['Open a terminal in the project folder.', 'Run npm install (once).', 'Run npm run dev.', 'Open http://localhost:5173 in your browser.'],
+      notes: 'Stop it with Ctrl+C or by closing the terminal.',
+    },
+  }[run];
+  if (run === 'static') writeFileSync('index.html', '<!DOCTYPE html>\n<title>Fake build</title>\n<p>Fake build.</p>\n');
+  if (runJson) writeFileSync('RUN.json', JSON.stringify(runJson, null, 2) + '\n');
+  if (run === 'broken') writeFileSync('RUN.json', '{ "kind": "static", "open": ');
   await toolResult('tool_1', `File created successfully at: ${readme}`);
 
   const command = 'git add -A && git commit -m "Add README"';

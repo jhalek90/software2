@@ -8,7 +8,8 @@
 //                           the idle CPU use to <dir>\cpu-idle.txt, then quit.
 //   SOFTWARE2_THEME=light|dark   force a theme (otherwise Windows' setting).
 // The fake CLI's FAKE_CLAUDE_DELAY_MS defaults to 1500 here, so each state stays up long
-// enough to see.
+// enough to see, and FAKE_CLAUDE_RUN to static (a page to open). Run now never runs a
+// command in demo mode (main.ts).
 
 import { app, nativeTheme, type BrowserWindow, type ProcessMetric } from 'electron';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -39,6 +40,8 @@ export function setupDemo(): void {
   const data = path.join(root, 'data');
   app.setPath('userData', data);
   process.env.FAKE_CLAUDE_DELAY_MS ??= '1500';
+  // A build that leaves a RUN.json for a page to open, so the card has "How to run it".
+  process.env.FAKE_CLAUDE_RUN ??= 'static';
   // Shots mode measures idle CPU with the background running, even if other windows
   // cover this one (Chromium would otherwise count it as hidden and pause it).
   if (shotsDir) app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
@@ -168,6 +171,33 @@ export async function takeShots(win: BrowserWindow): Promise<void> {
         2000,
       );
       await shot('again');
+
+      // "How to run it" for an app started by a command, its Run now confirm (cancelled:
+      // nothing runs), and a build with only the README's "How to run" section.
+      const quick = async (run: string, what: string) => {
+        process.env.FAKE_CLAUDE_RUN = run;
+        process.env.FAKE_CLAUDE_DELAY_MS = '100';
+        await js(`document.getElementById('request').value = ${JSON.stringify(what)}`);
+        await click('#go');
+        await until(`document.getElementById('confirm-dialog').open`);
+        await click('#confirm-dialog button[value="build"]');
+        await until(`!document.getElementById('result').hidden`);
+        await sleep(800);
+      };
+      await quick('command', 'a block-building game for the browser');
+      await shot('done-command');
+      await click('#run-now');
+      await until(`document.getElementById('run-dialog').open`);
+      await shot('run-confirm');
+      escape();
+      await until(`!document.getElementById('run-dialog').open`, 2000);
+      await click('#result-close');
+      await quick('readme', 'a markdown previewer');
+      await shot('done-readme');
+      process.env.FAKE_CLAUDE_RUN = 'static';
+      process.env.FAKE_CLAUDE_DELAY_MS = '1500';
+      await click('#result-close');
+      await until(`!document.getElementById('request-form').hidden`, 2000);
       await js(`document.getElementById('request').value = 'a CSV to JSON converter for the command line'`);
       await click('#go');
       await until(`document.getElementById('confirm-dialog').open`);

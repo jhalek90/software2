@@ -119,6 +119,23 @@
           </div>
         </div>
         <p id="result-request" class="result-request"></p>
+        <!-- A done build: how to run it, from its RUN.json, else its README's "How to run". -->
+        <div id="howto" class="howto" hidden>
+          <h3>How to run it</h3>
+          <ol id="howto-steps" class="steps"></ol>
+          <pre id="howto-readme" class="howto-readme" hidden></pre>
+          <p id="howto-problem" class="howto-problem" hidden></p>
+          <div id="howto-lines" class="code-lines"></div>
+          <p id="howto-notes" class="note" hidden></p>
+          <div class="howto-actions">
+            <button id="run-now" type="button" class="primary run-now">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+              Run now
+            </button>
+            <button id="howto-readme-open" type="button" hidden>Open README</button>
+            <span id="run-note" class="run-note" role="status"></span>
+          </div>
+        </div>
         <div id="result-summary" class="result-summary"></div>
         <h3>Commits</h3>
         <ol id="result-commits" class="commits"></ol>
@@ -204,6 +221,21 @@
       <div class="actions end">
         <button type="submit" value="cancel">Cancel</button>
         <button type="submit" value="build" class="primary" autofocus>Build it</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Run now, the first time for a project's commands: exactly what will run, and where. -->
+  <dialog id="run-dialog" class="sheet" aria-labelledby="run-title">
+    <form method="dialog">
+      <p class="eyebrow">Run now</p>
+      <h2 id="run-title">Run this?</h2>
+      <p id="run-folder" class="meta path"></p>
+      <div id="run-lines" class="code-lines"></div>
+      <p class="note">It opens in a new terminal window in that folder, so you can see what it does; close the window to stop it. software2 runs only these commands from the project's RUN.json, and asks again if they change.</p>
+      <div class="actions end">
+        <button type="submit" value="cancel">Cancel</button>
+        <button type="submit" value="run" class="primary" autofocus>Run it</button>
       </div>
     </form>
   </dialog>

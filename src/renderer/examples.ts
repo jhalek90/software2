@@ -1143,32 +1143,35 @@ const EXAMPLE_MAX_LENGTH = 60;
 /** How many of the latest examples shown are never shown again this session. */
 const EXAMPLE_RECENT = 400;
 
-/** How long an example stays in the box once it is settled, in milliseconds. */
-const EXAMPLE_PACE = 2000;
+/** How often the box shows a new example, in milliseconds. */
+const EXAMPLE_PACE = 3000;
 
-/** How often an entry with slots comes up: every second example, so its spin is seen often
- *  (in plain shuffled order only about one in five has slots). */
+/** How often an entry with slots comes up: every second example, so its reels are seen
+ *  often (in plain shuffled order only about one in five has slots). */
 const EXAMPLE_SLOTTED_EVERY = 2;
 
-/** The gaps between the frames of a slot spin, in milliseconds: the slot words flick by
- *  very fast, then brake onto the word they stop on. A spin has one more frame than gaps. */
-const EXAMPLE_SPIN: readonly number[] = [
-  60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, // the fast part, about 16 a second
-  80, 110, 150, 210, // braking
-];
+/** How many words a slot's reel rolls past before the one it lands on. */
+const EXAMPLE_REEL_WORDS = 14;
 
-/** With more than one slot, the reels stop left to right, this many frames apart. */
-const EXAMPLE_REEL_STAGGER = 3;
+/** How long the first reel rolls, in milliseconds; each reel after it lands this much later. */
+const EXAMPLE_ROLL_MS = 900;
+const EXAMPLE_REEL_STAGGER_MS = 250;
 
-/** One example for the box: the entry it came from, what the box settles on, and for an
- *  entry with slots what it shows while they spin. */
+/** One example for the box. Only the slot words move: each rolls into place in a window as
+ *  wide as the word it lands on, so the rest of the line stays still. */
 interface ExampleShow {
   entry: string;
+  /** The whole example, as the box settles on it. */
   text: string;
-  /** One per EXAMPLE_SPIN gap plus the last, which is `text`; only the slot words (and an
-   *  "a"/"an" before one) change between frames. Empty for an entry with no slots. */
-  frames: string[];
+  /** `text` split at its slot words: the fixed text and the slot words take turns, the slot
+   *  words at the odd indexes. Every "a"/"an" already suits the word it lands on. */
+  parts: string[];
+  /** For each slot word, the words its reel rolls past and then the slot word itself. */
+  reels: string[][];
 }
+
+/** Marks a slot word in an example while the articles are fixed, so it can be split out. */
+const SLOT_MARK = '';
 
 /** "a" or "an" for the word that follows, by how it sounds: "an 8x8", "a unicorn",
  *  "an SVG", "a UUID", "an hour". */
@@ -1185,7 +1188,7 @@ function articleFor(word: string): 'a' | 'an' {
 /** Sets every "a"/"an" in the text to suit the word after it. */
 function fixArticles(text: string): string {
   return text.replace(/(^| )(a|an) (\S+)/g, (_, before: string, _article: string, word: string) =>
-    `${before}${articleFor(word)} ${word}`);
+    `${before}${articleFor(word.replace(SLOT_MARK, ''))} ${word}`);
 }
 
 /** The names of an entry's slots, in order. */
@@ -1208,10 +1211,15 @@ function pickWord(
   return word;
 }
 
+/** The entry with its slots filled by these words, in order, split as ExampleShow.parts. */
+function exampleParts(entry: string, words: readonly string[]): string[] {
+  let i = 0;
+  return fixArticles(entry.replace(/\{(\w+)\}/g, () => `${SLOT_MARK}${words[i++]}${SLOT_MARK}`)).split(SLOT_MARK);
+}
+
 /** The entry with its slots filled by these words, in order, and its "a"/"an" fixed. */
 function fillWith(entry: string, words: readonly string[]): string {
-  let i = 0;
-  return fixArticles(entry.replace(/\{(\w+)\}/g, () => words[i++]));
+  return exampleParts(entry, words).join('');
 }
 
 /** One example with each {slot} filled from its word list (a slot with no list is left as
@@ -1224,36 +1232,25 @@ function fillExample(
   return fillWith(template, slotNames(template).map((name) => pickWord(name, slots, random)));
 }
 
-/** The frames of a slot spin that stops on `final` (the words of the example), one per
- *  EXAMPLE_SPIN gap plus the last. Each reel shows a different word every frame until it
- *  stops; a frame longer than EXAMPLE_MAX_LENGTH is rolled again, or the one before kept. */
-function spinFrames(
-  entry: string,
-  final: readonly string[],
+/** A slot's reel: EXAMPLE_REEL_WORDS words from its list, never the same twice running,
+ *  and then `word`, the one it lands on. */
+function reelWords(
+  name: string,
+  word: string,
   slots: Readonly<Record<string, readonly string[]>> = EXAMPLE_SLOTS,
   random: () => number = Math.random,
 ): string[] {
-  const names = slotNames(entry);
-  if (!names.length) return [entry];
-  const last = EXAMPLE_SPIN.length;
-  const frames: string[] = [];
-  let words = [...final];
-  for (let f = 0; f < last; f++) {
-    let frame = '';
-    for (let roll = 0; roll < 10; roll++) {
-      const next = names.map((name, k) =>
-        f >= last - EXAMPLE_REEL_STAGGER * (names.length - 1 - k) ? final[k] : pickWord(name, slots, random, words[k]));
-      const text = fillWith(entry, next);
-      if (text.length <= EXAMPLE_MAX_LENGTH) {
-        words = next;
-        frame = text;
-        break;
-      }
+  const reel: string[] = [];
+  for (let i = 0; i < EXAMPLE_REEL_WORDS; i++) {
+    let next = pickWord(name, slots, random, reel[i - 1]);
+    // The word before the last should differ from it too, or the reel looks stuck.
+    for (let tries = 0; i === EXAMPLE_REEL_WORDS - 1 && next === word && tries < 10; tries++) {
+      next = pickWord(name, slots, random, reel[i - 1]);
     }
-    frames.push(frame || frames[frames.length - 1] || fillWith(entry, final));
+    reel.push(next);
   }
-  frames.push(fillWith(entry, final));
-  return frames;
+  reel.push(word);
+  return reel;
 }
 
 /** Hands out the entries of a list in a random order: a fresh shuffle (Fisher-Yates) each
@@ -1296,11 +1293,13 @@ function exampleGenerator(
   const recent: string[] = [];
   const seen = new Set<string>();
   const show = (entry: string, words: string[]): ExampleShow => {
-    const text = fillWith(entry, words);
+    const parts = exampleParts(entry, words);
+    const text = parts.join('');
     recent.push(text);
     seen.add(text);
     if (recent.length > EXAMPLE_RECENT) seen.delete(recent.shift()!);
-    return { entry, text, frames: words.length ? spinFrames(entry, words, slots, random) : [] };
+    const names = slotNames(entry);
+    return { entry, text, parts, reels: words.map((word, k) => reelWords(names[k], word, slots, random)) };
   };
   return () => {
     turn++;

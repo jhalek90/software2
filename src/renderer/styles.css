@@ -320,9 +320,13 @@ main {
   cursor: text;
   user-select: none;
 }
+/* The textarea and the example drawn over it share one grid cell, so the example wraps
+   and sizes exactly as the placeholder under it does. */
+.request-stack { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.request-stack > * { grid-area: 1 / 1; }
 .composer textarea {
   display: block;
-  flex: 1;
+  width: 100%;
   min-width: 0;
   min-height: 52px;
   max-height: 40vh;
@@ -337,8 +341,24 @@ main {
   transition: min-height 0.35s var(--ease);
 }
 .composer textarea:focus-visible { outline: none; box-shadow: none; }
-.composer textarea::placeholder { color: var(--text-3); opacity: 1; transition: color 0.35s var(--ease); }
-.composer textarea.placeholder-out::placeholder { color: transparent; }
+/* The placeholder is there for screen readers and the height; #example is what shows. */
+.composer textarea::placeholder { color: transparent; }
+.example {
+  padding: 2px 0;
+  font: 17px/1.5 var(--font);
+  color: var(--text-3);
+  overflow-wrap: break-word;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 0.35s var(--ease);
+}
+.example.example-out { opacity: 0; }
+.composer textarea:not(:placeholder-shown) + .example { visibility: hidden; }
+/* A slot word's reel: a window as wide as the word it lands on (the hidden copy sets the
+   width) and one line high, with the words rolling up through it. */
+.reel { position: relative; display: inline-block; overflow: hidden; vertical-align: bottom; white-space: pre; }
+.reel-word { visibility: hidden; }
+.reel-strip { position: absolute; top: 0; left: 0; display: flex; flex-direction: column; }
 .composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
 .foot-buttons { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 

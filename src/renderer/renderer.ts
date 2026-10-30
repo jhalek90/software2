@@ -39,52 +39,83 @@ window.api.onWindowState((state) => {
 });
 
 // The placeholders cycle through examples while their boxes are empty: what to build after
-// "build me" (examples.ts: shuffled each start, slots filled afresh, no repeats), where an
-// example's slot words spin and stop like a slot machine (EXAMPLE_SPIN) before it stays
-// for EXAMPLE_PACE, and a design style in the Advanced panel at a steadier pace.
+// "build me" (examples.ts: shuffled each start, slots filled afresh, no repeats), drawn by
+// #example so only its slot words move, rolling into place like slot-machine reels; and a
+// design style in the Advanced panel at a steadier pace.
 
 const PLACEHOLDER_FADE_MS = 350;
 const STYLE_PACE = 4000;
+/** The height of one word on a reel: the example's line height (1.5 in styles.css). */
+const REEL_LINE_EM = 1.5;
 
-/** Fades a box's placeholder out, puts in the new one and lets it fade back in. */
-function swapPlaceholder(box: HTMLTextAreaElement | HTMLInputElement, text: string): void {
-  box.classList.add('placeholder-out');
-  setTimeout(() => {
-    box.placeholder = text;
-    box.classList.remove('placeholder-out');
-  }, PLACEHOLDER_FADE_MS);
-}
-
+const exampleBox = $<HTMLDivElement>('example');
 const nextExample = exampleGenerator();
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-/** Shows the next example: fades it in, spins its slot words as it does (not with reduced
- *  motion), keeps it for EXAMPLE_PACE once they stop, then moves on. Nothing changes while
- *  the window is hidden or the box has text, but the timing goes on. */
-function showExample(): void {
-  if (document.hidden || request.value) {
-    setTimeout(showExample, EXAMPLE_PACE);
-    return;
-  }
-  const { text, frames } = nextExample();
-  const shown = reducedMotion.matches || !frames.length ? [text] : frames;
-  swapPlaceholder(request, shown[0]);
-  let at = PLACEHOLDER_FADE_MS;
-  for (let i = 1; i < shown.length; i++) {
-    at += EXAMPLE_SPIN[i - 1];
-    const frame = shown[i];
-    setTimeout(() => {
-      request.placeholder = frame;
-    }, at);
-  }
-  setTimeout(showExample, at - PLACEHOLDER_FADE_MS + EXAMPLE_PACE);
+
+function span(className: string, text?: string): HTMLSpanElement {
+  const el = document.createElement('span');
+  el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
 }
-request.placeholder = '';
+
+/** Draws an example: the fixed text as it is, each slot word as a reel that rolls up to it
+ *  (or already shows it, with `roll` off). */
+function drawExample(show: ExampleShow, roll: boolean): void {
+  exampleBox.replaceChildren();
+  show.parts.forEach((part, i) => {
+    if (i % 2 === 0) {
+      if (part) exampleBox.append(part);
+      return;
+    }
+    const k = (i - 1) / 2;
+    const words = show.reels[k];
+    const strip = span('reel-strip');
+    for (const word of words) strip.append(span('', word));
+    const reel = span('reel');
+    reel.append(span('reel-word', part), strip);
+    exampleBox.append(reel);
+    const landed = `translateY(${-(words.length - 1) * REEL_LINE_EM}em)`;
+    if (!roll) {
+      strip.style.transform = landed;
+      return;
+    }
+    strip.animate([{ transform: 'translateY(0)' }, { transform: landed }], {
+      duration: EXAMPLE_ROLL_MS + k * EXAMPLE_REEL_STAGGER_MS,
+      easing: 'cubic-bezier(0.2, 0.6, 0.25, 1)',
+      fill: 'forwards',
+    });
+  });
+}
+
+/** Every EXAMPLE_PACE: fades the example out and the next one in, its reels rolling as it
+ *  comes (not with reduced motion). Nothing changes while the window is hidden or the box
+ *  has text, but the timing goes on. */
+function showExample(): void {
+  setTimeout(showExample, EXAMPLE_PACE);
+  if (document.hidden || request.value) return;
+  const show = nextExample();
+  const draw = (): void => {
+    request.placeholder = show.text;
+    drawExample(show, !reducedMotion.matches);
+    exampleBox.classList.remove('example-out');
+  };
+  // The first one just appears; after that each fades out before the next comes in.
+  if (!exampleBox.childNodes.length) return draw();
+  exampleBox.classList.add('example-out');
+  setTimeout(draw, PLACEHOLDER_FADE_MS);
+}
 showExample();
 
 const STYLES = ['dark and minimal', 'playful, pastel colours', 'like a 90s website', 'clean, lots of white space'];
 let style = 0;
 setInterval(() => {
-  if (!document.hidden && !advStyle.value) swapPlaceholder(advStyle, STYLES[++style % STYLES.length]);
+  if (document.hidden || advStyle.value) return;
+  advStyle.classList.add('placeholder-out');
+  setTimeout(() => {
+    advStyle.placeholder = STYLES[++style % STYLES.length];
+    advStyle.classList.remove('placeholder-out');
+  }, PLACEHOLDER_FADE_MS);
 }, STYLE_PACE);
 
 // Advanced: this run's max run time, a design style and files for the project. The panel

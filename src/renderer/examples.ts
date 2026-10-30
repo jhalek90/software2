@@ -1143,6 +1143,19 @@ const EXAMPLE_MAX_LENGTH = 60;
 /** How many of the latest examples shown are never shown again this session. */
 const EXAMPLE_RECENT = 400;
 
+/** The normal pace: how long an example stays in the box, in milliseconds. */
+const EXAMPLE_PACE = 4000;
+
+/** How long each example stays in the box over one round, in milliseconds, repeated for as
+ *  long as the app is open: a spin of about a second at 5 to 6 a second, a slowdown that
+ *  lands on one, then the normal pace until the next round spins again, about eleven
+ *  seconds after this one began. With reduced motion the box keeps the normal pace. */
+const EXAMPLE_ROUND: readonly number[] = [
+  175, 175, 175, 175, 175, 175, // the spin
+  240, 340, 500, 750, // slowing down
+  EXAMPLE_PACE, EXAMPLE_PACE, // the normal pace, then the next spin
+];
+
 /** "a" or "an" for the word that follows, by how it sounds: "an 8x8", "a unicorn",
  *  "an SVG", "a UUID", "an hour". */
 function articleFor(word: string): 'a' | 'an' {

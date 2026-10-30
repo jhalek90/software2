@@ -12,11 +12,11 @@ const ctx = vm.createContext({});
 const src = readFileSync(new URL('../dist/renderer/examples.js', import.meta.url), 'utf8');
 // A top-level const is not a property of the context, so ask the script for it.
 const {
-  EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH,
+  EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE, EXAMPLE_ROUND,
   exampleCycler, exampleGenerator, fillExample, fixArticles,
 } = vm.runInContext(
-  `${src}\n({ EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH,
-    exampleCycler, exampleGenerator, fillExample, fixArticles });`,
+  `${src}\n({ EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE,
+    EXAMPLE_ROUND, exampleCycler, exampleGenerator, fillExample, fixArticles });`,
   ctx,
 );
 
@@ -240,4 +240,21 @@ test('a reshuffle that would repeat the last entry moves it out of the first slo
   const next = exampleCycler(['a one', 'a two'], () => randoms.shift() ?? 0.5);
   const shown = Array.from({ length: 8 }, () => next());
   for (let i = 1; i < shown.length; i++) assert.notEqual(shown[i], shown[i - 1], shown.join(', '));
+});
+
+test('each round spins at 5 to 6 a second for about a second, then slows down to the normal pace', () => {
+  const spin = EXAMPLE_ROUND.slice(0, EXAMPLE_ROUND.findIndex((gap) => gap > 200));
+  for (const gap of spin) assert.ok(1000 / gap >= 5 && 1000 / gap <= 6.5, `${gap} ms is not 5 to 6 a second`);
+  const spinTime = spin.reduce((a, b) => a + b, 0);
+  assert.ok(spinTime >= 800 && spinTime <= 1300, `the spin lasts ${spinTime} ms`);
+  for (let i = 1; i < EXAMPLE_ROUND.length; i++) {
+    assert.ok(EXAMPLE_ROUND[i] >= EXAMPLE_ROUND[i - 1], `the round speeds up at step ${i}`);
+    assert.ok(EXAMPLE_ROUND[i] <= EXAMPLE_PACE, `step ${i} is slower than the normal pace`);
+  }
+  assert.equal(EXAMPLE_PACE, 4000);
+  assert.equal(EXAMPLE_ROUND.at(-1), EXAMPLE_PACE, 'the round does not end at the normal pace');
+  // The next spin comes about ten seconds after this one has slowed down and landed.
+  const landed = EXAMPLE_ROUND.indexOf(EXAMPLE_PACE);
+  const atPace = EXAMPLE_ROUND.slice(landed).reduce((a, b) => a + b, 0);
+  assert.ok(atPace >= 7000 && atPace <= 12000, `${atPace} ms at the normal pace between spins`);
 });

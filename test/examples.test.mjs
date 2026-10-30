@@ -12,11 +12,11 @@ const ctx = vm.createContext({});
 const src = readFileSync(new URL('../dist/renderer/examples.js', import.meta.url), 'utf8');
 // A top-level const is not a property of the context, so ask the script for it.
 const {
-  EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE,
+  EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE, EXAMPLE_FADE_MS,
   EXAMPLE_SLOTTED_EVERY, EXAMPLE_REEL_WORDS, EXAMPLE_ROLL_MS, EXAMPLE_REEL_STAGGER_MS,
   exampleCycler, exampleGenerator, exampleParts, fillExample, fixArticles, reelWords,
 } = vm.runInContext(
-  `${src}\n({ EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE,
+  `${src}\n({ EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE, EXAMPLE_FADE_MS,
     EXAMPLE_SLOTTED_EVERY, EXAMPLE_REEL_WORDS, EXAMPLE_ROLL_MS, EXAMPLE_REEL_STAGGER_MS,
     exampleCycler, exampleGenerator, exampleParts, fillExample, fixArticles, reelWords });`,
   ctx,
@@ -261,13 +261,13 @@ test('a reshuffle that would repeat the last entry moves it out of the first slo
   for (let i = 1; i < shown.length; i++) assert.notEqual(shown[i], shown[i - 1], shown.join(', '));
 });
 
-test('a new example every three seconds, its reels settled with time to read it', () => {
-  assert.equal(EXAMPLE_PACE, 3000);
+test('a new example every second and a half, its reels settled for half of that', () => {
+  assert.equal(EXAMPLE_PACE, 1500);
   const most = Math.max(...EXAMPLES.map((e) => slotsOf(e).length));
   assert.ok(most <= 2, `an entry with ${most} slots`);
-  // The 350 ms fade in, then the last reel's roll; at least a second and a half to read it.
-  const settled = 350 + EXAMPLE_ROLL_MS + (most - 1) * EXAMPLE_REEL_STAGGER_MS;
-  assert.ok(EXAMPLE_PACE - settled >= 1500, `the example is settled ${settled} ms in`);
+  // The fade in, then the last reel's roll; settled for at least half the time it shows.
+  const settled = EXAMPLE_FADE_MS + EXAMPLE_ROLL_MS + (most - 1) * EXAMPLE_REEL_STAGGER_MS;
+  assert.ok(EXAMPLE_PACE - settled >= EXAMPLE_PACE / 2, `the example is settled ${settled} ms in`);
 });
 
 test('a reel rolls past different words, never the same twice running, onto its word', () => {

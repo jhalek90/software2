@@ -1144,7 +1144,10 @@ const EXAMPLE_MAX_LENGTH = 60;
 const EXAMPLE_RECENT = 400;
 
 /** How often the box shows a new example, in milliseconds. */
-const EXAMPLE_PACE = 3000;
+const EXAMPLE_PACE = 1500;
+
+/** How long one example fades out, and the next fades in, in milliseconds. */
+const EXAMPLE_FADE_MS = 175;
 
 /** How often an entry with slots comes up: every second example, so its reels are seen
  *  often (in plain shuffled order only about one in five has slots). */
@@ -1154,8 +1157,8 @@ const EXAMPLE_SLOTTED_EVERY = 2;
 const EXAMPLE_REEL_WORDS = 14;
 
 /** How long the first reel rolls, in milliseconds; each reel after it lands this much later. */
-const EXAMPLE_ROLL_MS = 900;
-const EXAMPLE_REEL_STAGGER_MS = 250;
+const EXAMPLE_ROLL_MS = 450;
+const EXAMPLE_REEL_STAGGER_MS = 125;
 
 /** One example for the box. Only the slot words move: each rolls into place in a window as
  *  wide as the word it lands on, so the rest of the line stays still. */

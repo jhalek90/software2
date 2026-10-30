@@ -49,6 +49,7 @@ const STYLE_PACE = 4000;
 const REEL_LINE_EM = 1.5;
 
 const exampleBox = $<HTMLDivElement>('example');
+exampleBox.style.transitionDuration = `${EXAMPLE_FADE_MS}ms`;
 const nextExample = exampleGenerator();
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -103,7 +104,7 @@ function showExample(): void {
   // The first one just appears; after that each fades out before the next comes in.
   if (!exampleBox.childNodes.length) return draw();
   exampleBox.classList.add('example-out');
-  setTimeout(draw, PLACEHOLDER_FADE_MS);
+  setTimeout(draw, EXAMPLE_FADE_MS);
 }
 showExample();
 

@@ -3,8 +3,9 @@
 `software(2);`
 
 A proof-of-concept Windows app with one text box that reads "build me [ ... ]". You type the software you want,
-the app asks Claude Code for a quick time estimate, you confirm and pick a new
-folder, and Claude Code builds it in one go, headless, with local git only.
+the app asks Claude Code for a quick time estimate and a short name, you confirm, and
+Claude Code builds it in one go in a new folder named after it, headless, with local
+git only.
 
 Behind the scenes it just pipes your request, plus some instructions, into the
 `claude` CLI. Windows only for now.
@@ -63,8 +64,9 @@ The shortcut runs `scripts\launch.vbs` through `wscript.exe`, which runs
 
    When anything is set, a chip in the box says so ("45 min · dark and minimal ·
    3 files"), with the panel open or closed. **Build something else** clears it.
-3. Read the estimate and press **Build it**, then pick or create a new, empty folder.
-   Until the folder is picked the box stays, so you can cancel and edit.
+3. Read the estimate and press **Build it**. Nothing to pick: the card says where the
+   project will go ("Will be created in C:\Users\you\software2-projects\pomodoro-timer"),
+   a new folder inside the projects folder from Settings, named by the estimate.
 4. Then the box slides away for the whole build. What is left is one quiet line with
    what is being built ("Building: a pomodoro timer") and the status line: what Claude
    is doing right now, the time against the estimate and a thin progress bar. **Stop**
@@ -72,7 +74,7 @@ The shortcut runs `scripts\launch.vbs` through `wscript.exe`, which runs
 5. When it ends you get Claude's summary, the git commits it made, **Open folder**,
    **Open README**, **Open full log** (to see what went wrong in a failed run) and
    **Build something else**, which brings the box back, empty, with Advanced reset.
-   There is no history of past builds: their folders stay where you put them.
+   There is no history of past builds: their folders stay in the projects folder.
 6. A build that is done also gets **How to run it** at the top of the card (see "Run
    what was built" below): a few numbered steps, the folder, the command or file with
    **Copy** buttons, and **Run now**.
@@ -164,14 +166,24 @@ to work around it. Some builds will not finish that way.
    in a temporary empty folder, so Claude can only answer, not act. The prompt has the
    request, the design style and the files' names, types and sizes (never the files).
    It replies with JSON:
-   minutes, summary, stack, steps and risks. Code fences and prose around the JSON are
-   fine; if no estimate can be read, the raw reply is shown with Retry.
+   minutes, name, summary, stack, steps and risks. Code fences and prose around the JSON
+   are fine; if no estimate can be read, the raw reply is shown with Retry.
+   `name` is a short kebab-case name for the project's folder ("pixel-art-editor"). If it
+   is missing or unusable, one is made from the request: without "build me", up to the
+   first "with", "that", "for", comma and so on, filler words left out, at most four
+   words ("Build me a pomodoro timer with sounds" -> `pomodoro-timer`). Either way it is
+   made safe for Windows: lowercase a-z, 0-9 and hyphens, no hyphen at either end, at
+   most 40 characters, never a reserved name (con, prn, aux, nul, com1-9, lpt1-9), and
+   `project` if nothing is left.
 2. **Confirm**: a card with the summary, stack, steps, "About N minutes", the design
    style and number of files if set, the time cap for this build and, if the
-   permission-skip setting is on, a warning. "Build it" or "Cancel".
-3. **Folder**: a folder dialog opens at the default folder. Pick or create a new, empty
-   folder; a non-empty one is refused. It gets `git init` and an empty first commit.
-   Files from Advanced are then copied into `assets` and committed.
+   permission-skip setting is on, a warning, and "Will be created in ..." with the
+   project's folder. "Build it" or "Cancel".
+3. **Folder**: "Build it" makes the projects folder from Settings if it is missing, then
+   a new folder in it with the project's name. A name that is taken (by a folder or a
+   file) gets `-2`, `-3` and so on: an existing folder is never reused or written into,
+   even an empty one. The new folder gets `git init` and an empty first commit. Files
+   from Advanced are then copied into `assets` and committed.
 4. **Build** (time cap from Advanced, else from Settings): runs
    `claude -p --output-format stream-json --verbose` in the project folder, plus either
    `--dangerously-skip-permissions` or
@@ -222,7 +234,7 @@ stand-in for the CLI, never the real one.
 
 Off by default. `SOFTWARE2_DEMO=1` runs the window against `test/fake-claude.mjs`, with
 a throwaway data folder in `%TEMP%\software2-demo-*` (your real settings are not
-touched) and no folder dialog. `SOFTWARE2_SHOTS=<folder>` also walks through every
+touched) and its projects folder in there too. `SOFTWARE2_SHOTS=<folder>` also walks through every
 state (empty, the Advanced panel with three made-up sample files, open and closed,
 estimating, confirm, building, done with a page to open, done with a command and its Run
 now sheet, done with only a README, Settings, a failed build, the smallest window,
@@ -245,7 +257,8 @@ Open **Settings** with the gear icon. They are saved as JSON in the app's own fo
   use Detect or Browse to change it. A `.js`/`.mjs` script also works (it is run
   with Node), so you can point it at `test/fake-claude.mjs` to try the app without
   Claude.
-- **Default folder for new projects.**
+- **Projects folder** (default `%USERPROFILE%\software2-projects`): every new project is
+  created here automatically, in a new folder named after it. It is made if missing.
 - **Build time cap** in minutes (default 30). The build is killed when it runs out.
 - **Let Claude build without asking permission** (`--dangerously-skip-permissions`),
   on by default. See above for what that means and what happens when it is off.
@@ -256,10 +269,11 @@ Open **Settings** with the gear icon. They are saved as JSON in the app's own fo
 src/main/main.ts        Electron main process: window, IPC, settings, Go/Stop
 src/main/runner.ts      runClaude(): spawn the CLI, stream lines, Stop, time cap
 src/main/settings.ts    load/save settings.json, find claude on PATH
-src/main/flow.ts        Go: estimate -> confirm -> folder -> build (Electron bits passed in)
+src/main/flow.ts        Go: estimate -> confirm -> new folder -> build (Electron bits passed in)
 src/main/advanced.ts    Advanced: run time, design style, files (checks, copy into assets/)
 src/main/estimate.ts    the estimate run and parsing its JSON reply
-src/main/project.ts     the empty-folder check and git init
+src/main/naming.ts      the project's folder name: from the estimate or the request, made safe
+src/main/project.ts     making the new project folder (-2, -3 when taken) and git init
 src/main/build.ts       runBuild(): the build run, its flags and its prompt
 src/main/howtorun.ts    RUN.json, the README fallback, and Run now
 src/main/stream.ts      stream-json lines -> readable log lines and the status-line sentence

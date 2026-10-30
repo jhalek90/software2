@@ -745,7 +745,8 @@ dialog[open]::backdrop { background: var(--backdrop); }
   color: var(--text-2);
 }
 .risks { margin: 0; padding-left: 20px; color: var(--text-2); }
-#confirm-cap { margin-top: 16px; }
+#confirm-folder { margin-top: 16px; }
+#confirm-cap { margin-top: 4px; }
 
 .callout {
   margin-top: 12px;

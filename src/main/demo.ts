@@ -1,7 +1,7 @@
 // Demo mode, off by default, for trying the look and taking screenshots without Claude.
 //   SOFTWARE2_DEMO=1        run against test/fake-claude.mjs with a throwaway data folder,
-//                           %TEMP%\software2-demo-* (never the real settings);
-//                           the folder dialog is skipped and a fresh empty folder is used.
+//                           %TEMP%\software2-demo-* (never the real settings), and
+//                           its projects folder in there too.
 //   SOFTWARE2_SHOTS=<dir>   demo mode, plus: walk through every state in light and dark
 //                           (with the Advanced panel set and a few sample files added),
 //                           save a PNG of each into <dir> (and reduced-motion ones), write
@@ -22,7 +22,6 @@ export const DEMO = process.env.SOFTWARE2_DEMO === '1' || !!shotsDir;
 
 const FAKE_CLI = path.join(__dirname, '..', '..', 'test', 'fake-claude.mjs');
 let root = '';
-let folders = 0;
 
 /** Call before the app is ready. Points userData at a fresh temp folder with demo settings. */
 export function setupDemo(): void {
@@ -63,13 +62,6 @@ function removeTree(dir: string): void {
   };
   writable(dir);
   rmSync(dir, { recursive: true, force: true });
-}
-
-/** A new, empty folder for the next build, instead of the folder dialog. */
-export function demoFolder(): string {
-  const dir = path.join(root, 'projects', `demo-${++folders}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
 }
 
 /** A few made-up files for the Advanced panel in shots mode (the app never opens them). */

@@ -22,6 +22,7 @@ test.after(() => rmSync(tmp, { recursive: true, force: true }));
 
 const GOOD = {
   minutes: 25,
+  name: 'todo-app',
   summary: 'A todo app in the browser.',
   stack: 'TypeScript + Vite',
   steps: ['Scaffold', 'Build the list', 'Save to localStorage'],
@@ -84,6 +85,7 @@ test('is lenient about types and trims the lists', () => {
   assert.equal(res.ok, true);
   assert.deepEqual(res.estimate, {
     minutes: 12,
+    name: '',
     summary: 'A thing.',
     stack: '',
     steps: ['1', '2', '3', '4', '5', '6'],
@@ -91,6 +93,23 @@ test('is lenient about types and trims the lists', () => {
   });
   const four = parseEstimate(JSON.stringify({ ...GOOD, risks: ['a', 'b', 'c', 'd'] }));
   assert.deepEqual(four.estimate.risks, ['a', 'b', 'c']);
+});
+
+test('the folder name is made safe, and left empty when the reply has none usable', () => {
+  const name = (n) => parseEstimate(JSON.stringify({ ...GOOD, name: n })).estimate.name;
+  assert.equal(name('Pixel Art Editor!'), 'pixel-art-editor');
+  assert.equal(name('gunblocks'), 'gunblocks');
+  assert.equal(name('CON'), '');
+  assert.equal(name('???'), '');
+  assert.equal(name(42), '');
+  const { name: _, ...noName } = GOOD;
+  assert.equal(parseEstimate(JSON.stringify(noName)).estimate.name, '');
+});
+
+test('the prompt asks for a kebab-case folder name', () => {
+  const prompt = estimatePrompt('Build me a todo app');
+  assert.match(prompt, /"name": "project-name"/);
+  assert.match(prompt, /1 to 4 words in lowercase kebab-case/);
 });
 
 test('reads the result text out of --output-format json output', () => {

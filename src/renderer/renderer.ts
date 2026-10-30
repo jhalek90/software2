@@ -410,7 +410,7 @@ function showActivity(text: string): void {
 function onStatus(status: string): void {
   viewEvent({ type: 'status', status }, request.value);
   if (status === 'Estimating...') setPhase('estimating', 'Estimating how long it will take...');
-  else if (status === 'Choose a folder for the project') setPhase('folder', 'Choose or create an empty folder for the project');
+  else if (status === 'Creating the project folder') setPhase('folder', 'Creating the project folder...');
   else if (status === 'Copying your files') setPhase('folder', 'Copying your files into assets/...');
   else if (status === 'Building...') {
     if (phase !== 'building') setPhase('building', 'Starting the build...');
@@ -426,7 +426,7 @@ stopButton.addEventListener('click', () => {
 });
 
 // Go: estimate, then the confirm card. "Build it" hands over to the main process,
-// which opens the folder dialog and starts the build.
+// which makes the project's folder (named by the estimate) and starts the build.
 
 const confirmDialog = $<HTMLDialogElement>('confirm-dialog');
 const failedDialog = $<HTMLDialogElement>('failed-dialog');
@@ -446,7 +446,7 @@ async function go(): Promise<void> {
   }
   showNotice('');
   setWorking(true);
-  let outcome: EstimateOutcome;
+  let outcome: GoOutcome;
   try {
     outcome = await window.api.estimate(request.value, advancedOptions());
   } catch (err) {
@@ -454,7 +454,7 @@ async function go(): Promise<void> {
   } finally {
     setWorking(false);
   }
-  if (outcome.status === 'ok') await showConfirm(outcome.estimate);
+  if (outcome.status === 'ok') await showConfirm(outcome.estimate, outcome.folder);
   else if (outcome.status !== 'stopped') showFailed(outcome.error, 'raw' in outcome ? outcome.raw : undefined);
 }
 
@@ -468,7 +468,7 @@ function fillList(list: HTMLElement, items: string[]): void {
   );
 }
 
-async function showConfirm(estimate: Estimate): Promise<void> {
+async function showConfirm(estimate: Estimate, folder: string): Promise<void> {
   const s = await window.api.getSettings();
   $('confirm-summary').textContent = estimate.summary;
   $('confirm-minutes').textContent = `About ${estimate.minutes} minute${estimate.minutes === 1 ? '' : 's'}`;
@@ -487,6 +487,7 @@ async function showConfirm(estimate: Estimate): Promise<void> {
   $('confirm-files').textContent = `${plural(userFiles.length, 'file')} for assets/`;
   $('confirm-files').title = userFiles.map((f) => f.name).join(', ');
   $('confirm-files').hidden = userFiles.length === 0;
+  $('confirm-folder').textContent = `Will be created in ${folder}`;
   $('confirm-warning').hidden = !s.skipPermissions;
   $('confirm-limited').hidden = s.skipPermissions;
   confirmDialog.returnValue = '';

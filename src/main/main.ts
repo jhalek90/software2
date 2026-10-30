@@ -1,11 +1,11 @@
 // Electron main process: one window, settings and the Go/Stop plumbing.
 
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { inspectFiles, type AdvancedOptions } from './advanced';
 import { ALLOWED_COMMANDS, runBuild, type BuildEvent, type BuildOutcome } from './build';
-import { DEMO, demoFolder, setupDemo, takeShots } from './demo';
+import { DEMO, setupDemo, takeShots } from './demo';
 import { Flow } from './flow';
 import { RunNow } from './howtorun';
 import { RunLog } from './runlog';
@@ -116,6 +116,8 @@ ipcMain.handle('dialog:pickClaude', async () => {
   return res.canceled ? null : res.filePaths[0];
 });
 
+// Settings' Browse for the projects folder (projects themselves are never picked: flow.ts
+// names and makes their folders).
 ipcMain.handle('dialog:pickFolder', async (_e, current: string) => {
   const res = await dialog.showOpenDialog(win!, {
     title: 'Choose a folder',
@@ -140,30 +142,6 @@ const flow = new Flow({
   settings: () => loadSettings(settingsDir()),
   log,
   setStatus,
-  pickFolder: async (defaultPath) => {
-    if (DEMO) return demoFolder();
-    try {
-      mkdirSync(defaultPath, { recursive: true });
-    } catch {
-      // The dialog then opens wherever Windows likes.
-    }
-    const res = await dialog.showOpenDialog(win!, {
-      title: 'Pick or create a new, empty folder for the project',
-      defaultPath,
-      buttonLabel: 'Use this folder',
-      properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
-    });
-    return res.canceled ? null : res.filePaths[0];
-  },
-  refuseFolder: async (message) => {
-    await dialog.showMessageBox(win!, {
-      type: 'warning',
-      title: 'Choose another folder',
-      message: 'This folder cannot be used for a new project',
-      detail: message,
-      buttons: ['Pick again'],
-    });
-  },
   build: async (job) => {
     const build = runBuild(job, {
       log,

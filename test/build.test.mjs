@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_COMMANDS, PROMPT_FILE, buildArgs, buildPrompt, formatDuration, runBuild } from '../dist/main/build.js';
-import { prepareProjectFolder } from '../dist/main/project.js';
+import { createProjectFolder, initRepo } from '../dist/main/project.js';
 import { runClaude } from '../dist/main/runner.js';
 import { parseStreamLine, toolLine } from '../dist/main/stream.js';
 
@@ -18,8 +18,6 @@ const tmp = mkdtempSync(path.join(os.tmpdir(), 'software2-build-'));
 test.after(() => rmSync(tmp, { recursive: true, force: true }));
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
-let n = 0;
-const newDir = (name = 'd') => path.join(tmp, `${name}${++n}`);
 const line = (obj) => JSON.stringify(obj);
 const folder = path.join(tmp, 'proj');
 
@@ -165,8 +163,8 @@ test('formatDuration', () => {
 // Whole builds with the fake CLI
 
 async function newProject() {
-  const dir = newDir('proj');
-  assert.deepEqual(await prepareProjectFolder(dir), { ok: true });
+  const { folder: dir } = createProjectFolder(tmp, 'proj');
+  assert.deepEqual(await initRepo(dir), { ok: true });
   return dir;
 }
 

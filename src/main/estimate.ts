@@ -5,10 +5,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { designText, filesText, type FileInfo } from './advanced';
+import { cleanName } from './naming';
 import { runClaude, type RunHandle, type RunOptions } from './runner';
 
 export interface Estimate {
   minutes: number;
+  /** A safe folder name from the reply's "name" (naming.ts), '' when it had none usable. */
+  name: string;
   summary: string;
   stack: string;
   steps: string[];
@@ -62,8 +65,9 @@ export function estimatePrompt(request: string, extras: { style?: string; files?
     'on Windows, with local git only. Estimate that run.',
     '',
     'Reply with one JSON object and nothing else: no prose, no code fences. Exactly these keys:',
-    '{ "minutes": number, "summary": "one sentence of what will be built", "stack": "language/framework it would use", "steps": ["3 to 6 short steps"], "risks": ["0 to 3"] }',
+    '{ "minutes": number, "name": "project-name", "summary": "one sentence of what will be built", "stack": "language/framework it would use", "steps": ["3 to 6 short steps"], "risks": ["0 to 3"] }',
     'minutes is how long the build run would take, in whole minutes.',
+    'name is a short name for the project folder: 1 to 4 words in lowercase kebab-case, for example "pixel-art-editor" or "gunblocks".',
   ].join('\n');
 }
 
@@ -236,6 +240,7 @@ function toEstimate(raw: unknown): ParseResult {
     ok: true,
     estimate: {
       minutes: Math.min(Math.max(1, Math.round(minutes)), 24 * 60),
+      name: cleanName(r.name) ?? '',
       summary,
       stack: typeof r.stack === 'string' ? r.stack.trim() : '',
       steps: strings(r.steps, 6),

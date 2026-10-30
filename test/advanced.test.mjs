@@ -22,7 +22,7 @@ import {
 import { PROMPT_FILE, buildPrompt, runBuild } from '../dist/main/build.js';
 import { estimatePrompt } from '../dist/main/estimate.js';
 import { Flow, buildMeRequest } from '../dist/main/flow.js';
-import { prepareProjectFolder } from '../dist/main/project.js';
+import { initRepo } from '../dist/main/project.js';
 import { runClaude } from '../dist/main/runner.js';
 
 const FAKE = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
@@ -46,15 +46,14 @@ const sourceFile = (name, text = `contents of ${name}`) => {
 const settings = (over = {}) => ({ claudePath: FAKE, projectsFolder: tmp, buildCapMinutes: 30, skipPermissions: true, ...over });
 const estimate = { minutes: 3, summary: 'A cat website.', stack: 'HTML', steps: ['Write index.html'], risks: [] };
 
-/** A Flow with recorded stand-ins: the folder dialog returns picks in order. */
-function makeFlow({ picks = [], env } = {}) {
+/** A Flow with recorded stand-ins, making its projects in a projects folder of its own. */
+function makeFlow({ env } = {}) {
   const calls = { builds: [], logs: [], statuses: [] };
+  const projectsFolder = newDir('projects');
   const flow = new Flow({
-    settings: () => settings(),
+    settings: () => settings({ projectsFolder }),
     log: (kind, text) => calls.logs.push({ kind, text }),
     setStatus: (s) => calls.statuses.push(s),
-    pickFolder: async () => picks.shift() ?? null,
-    refuseFolder: async () => {},
     build: async (job) => {
       calls.builds.push(job);
     },
@@ -77,7 +76,7 @@ test('the request is "Build me " and what was typed, without a doubled "build me
 
 test('the flow sends "Build me ..." to the estimate and to the build', async () => {
   const promptFile = path.join(newDir('prompt'), 'estimate.txt');
-  const { flow, calls } = makeFlow({ picks: [newDir('proj')], env: { FAKE_CLAUDE_PROMPT_FILE: promptFile } });
+  const { flow, calls } = makeFlow({ env: { FAKE_CLAUDE_PROMPT_FILE: promptFile } });
   assert.equal((await flow.estimate('a pomodoro timer')).status, 'ok');
   assert.match(readFileSync(promptFile, 'utf8'), /<request>\nBuild me a pomodoro timer\n<\/request>/);
   assert.ok(calls.logs.some((l) => l.text === 'Request: Build me a pomodoro timer'));
@@ -97,10 +96,10 @@ test('the run time is kept between 5 and 120 minutes; empty means Settings', () 
 });
 
 test('the run time from Advanced reaches the build, and the build is capped by it', async () => {
-  const folder = newDir('proj');
-  const { flow, calls } = makeFlow({ picks: [folder] });
+  const { flow, calls } = makeFlow();
   await flow.estimate('a timer', { capMinutes: 45 });
   await flow.confirm();
+  const { folder } = calls.builds[0];
   assert.equal(calls.builds[0].capMinutes, 45);
   assert.equal(calls.builds[0].settings.buildCapMinutes, 30, 'Settings are left alone');
 
@@ -127,7 +126,7 @@ test('the run time from Advanced reaches the build, and the build is capped by i
 });
 
 test('without a run time the build keeps the cap from Settings; out of range is clamped', async () => {
-  const { flow, calls } = makeFlow({ picks: [newDir('proj'), newDir('proj')] });
+  const { flow, calls } = makeFlow();
   await flow.estimate('a timer', { capMinutes: null, style: '', files: [] });
   await flow.confirm();
   assert.equal(calls.builds[0].capMinutes, undefined);
@@ -138,7 +137,7 @@ test('without a run time the build keeps the cap from Settings; out of range is 
 
 test('the time cap ends a build at the run time from Advanced', async () => {
   const folder = newDir('proj');
-  assert.deepEqual(await prepareProjectFolder(folder), { ok: true });
+  assert.deepEqual(await initRepo(folder), { ok: true });
   const entry = await runBuild(
     { request: 'x', estimate, folder, settings: settings(), capMinutes: 7 },
     {
@@ -177,8 +176,7 @@ test('the design style goes into the estimate prompt and the build prompt; empty
 test('the style reaches the CLI in both runs', async () => {
   const dir = newDir('prompt');
   const estimateFile = path.join(dir, 'estimate.txt');
-  const folder = newDir('proj');
-  const { flow, calls } = makeFlow({ picks: [folder], env: { FAKE_CLAUDE_PROMPT_FILE: estimateFile } });
+  const { flow, calls } = makeFlow({ env: { FAKE_CLAUDE_PROMPT_FILE: estimateFile } });
   await flow.estimate('a cat site', { style: '  playful,\n pastel colours ' });
   assert.match(readFileSync(estimateFile, 'utf8'), /<design>\nplayful, pastel colours\n<\/design>/);
   await flow.confirm();
@@ -227,7 +225,7 @@ test('clashing names get a number, ignoring case like Windows does', () => {
 
 test('files are copied into assets/ with their names, clashes numbered, and committed', async () => {
   const folder = newDir('proj');
-  assert.deepEqual(await prepareProjectFolder(folder), { ok: true });
+  assert.deepEqual(await initRepo(folder), { ok: true });
   const a = sourceFile('cat.jpg', 'first cat');
   const b = sourceFile('cat.jpg', 'second cat');
   const c = sourceFile('logo.svg', '<svg/>');
@@ -249,13 +247,13 @@ test('files are copied into assets/ with their names, clashes numbered, and comm
 });
 
 test('the whole flow: files go into assets/ before the build, and the build prompt lists them', async () => {
-  const folder = newDir('proj');
   const photo = sourceFile('my-cat.png', 'meow');
-  const { flow, calls } = makeFlow({ picks: [folder] });
+  const { flow, calls } = makeFlow();
   await flow.estimate('a website about my cat', { files: [photo] });
   assert.equal((await flow.confirm()).status, 'built');
   assert.ok(calls.statuses.includes('Copying your files'));
   const job = calls.builds[0];
+  const { folder } = job;
   assert.deepEqual(job.files, [{ name: 'my-cat.png', size: 4, type: 'image/png' }]);
   assert.equal(readFileSync(path.join(folder, 'assets', 'my-cat.png'), 'utf8'), 'meow');
 

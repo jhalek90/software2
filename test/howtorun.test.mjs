@@ -21,7 +21,7 @@ import {
   terminalScript,
   waitForUrl,
 } from '../dist/main/howtorun.js';
-import { prepareProjectFolder } from '../dist/main/project.js';
+import { createProjectFolder, initRepo } from '../dist/main/project.js';
 import { runClaude } from '../dist/main/runner.js';
 
 const FAKE = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
@@ -270,8 +270,8 @@ test('waitForUrl: true once anything answers, false when nothing does in time', 
 // Whole builds with the fake CLI
 
 async function fakeBuild(run) {
-  const folder = path.join(tmp, `build${++n}`);
-  await prepareProjectFolder(folder);
+  const { folder } = createProjectFolder(tmp, 'build');
+  await initRepo(folder);
   const startRun = (opts) => runClaude(opts).done;
   return runBuild(
     {
@@ -303,8 +303,8 @@ test('a done build carries how to run it: static, command, broken, README only, 
 });
 
 test('a build that did not finish has no how-to-run', async () => {
-  const folder = path.join(tmp, `build${++n}`);
-  await prepareProjectFolder(folder);
+  const { folder } = createProjectFolder(tmp, 'build');
+  await initRepo(folder);
   const outcome = await runBuild(
     {
       request: 'Build me a game',

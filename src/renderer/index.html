@@ -171,11 +171,12 @@
     </div>
 
     <div class="field">
-      <label for="projects-folder">Default folder for new projects</label>
+      <label for="projects-folder">Projects folder</label>
       <div class="row">
         <input id="projects-folder" type="text" spellcheck="false">
         <button id="projects-browse" type="button">Browse...</button>
       </div>
+      <p class="note">New projects are created here automatically, each in a new folder named after it (made if missing).</p>
     </div>
 
     <div class="field">
@@ -215,6 +216,7 @@
         <h3>Risks</h3>
         <ul id="confirm-risks" class="risks"></ul>
       </div>
+      <p id="confirm-folder" class="meta path"></p>
       <p id="confirm-cap" class="meta"></p>
       <p id="confirm-warning" class="callout warn" hidden>Claude will build without asking permission and can run any command on this PC.</p>
       <p id="confirm-limited" class="callout" hidden>Claude can edit files in the project folder and run only <span class="allowed-commands"></span>. Commands outside that list fail without a prompt for you to answer.</p>

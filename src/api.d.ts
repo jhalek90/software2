@@ -5,6 +5,7 @@ type Settings = import('./main/settings').Settings;
 type Estimate = import('./main/estimate').Estimate;
 type EstimateOutcome = import('./main/estimate').EstimateOutcome;
 type ConfirmOutcome = import('./main/flow').ConfirmOutcome;
+type GoOutcome = import('./main/flow').GoOutcome;
 type BuildOutcome = import('./main/build').BuildOutcome;
 type BuildEvent = import('./main/build').BuildEvent;
 type AdvancedOptions = import('./main/advanced').AdvancedOptions;
@@ -35,16 +36,18 @@ interface Software2Api {
   saveSettings(change: Partial<Settings>): Promise<Settings>;
   detectClaude(): Promise<string | null>;
   pickClaude(): Promise<string | null>;
+  /** Settings' Browse for the projects folder. */
   pickFolder(current: string): Promise<string | null>;
   /** Step 1 of Go, with what was typed after "build me" and the Advanced panel's options.
-   *  On ok, call confirm() ("Build it") or cancel(). */
-  estimate(request: string, options?: AdvancedOptions): Promise<EstimateOutcome>;
+   *  On ok (with the folder the project will be created in), call confirm() ("Build it")
+   *  or cancel(). */
+  estimate(request: string, options?: AdvancedOptions): Promise<GoOutcome>;
   /** The Advanced panel's files: a file dialog, or paths dropped on the page. */
   pickFiles(): Promise<InspectedFiles>;
   inspectFiles(paths: string[]): Promise<InspectedFiles>;
   /** The full path of a dropped file ('' if it has none). */
   pathForFile(file: File): string;
-  /** Folder dialog, git init, then the build. */
+  /** Makes the project's new folder, git init, then the build. */
   confirm(): Promise<ConfirmOutcome>;
   cancel(): Promise<void>;
   stop(): Promise<void>;

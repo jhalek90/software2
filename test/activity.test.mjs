@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runBuild } from '../dist/main/build.js';
-import { prepareProjectFolder } from '../dist/main/project.js';
+import { createProjectFolder, initRepo } from '../dist/main/project.js';
 import { runClaude } from '../dist/main/runner.js';
 import { LOGS_DIR, LOGS_MAX, RunLog } from '../dist/main/runlog.js';
 import { parseStreamLine, textActivity, toolActivity } from '../dist/main/stream.js';
@@ -70,8 +70,8 @@ test('a stream line carries the activity of its last block; results and init too
 });
 
 test('a build reports what it is doing and passes its log file on in the outcome', async () => {
-  const dir = path.join(tmp, 'build1');
-  assert.deepEqual(await prepareProjectFolder(dir), { ok: true });
+  const { folder: dir } = createProjectFolder(tmp, 'build1');
+  assert.deepEqual(await initRepo(dir), { ok: true });
   const activities = [];
   const runLog = new RunLog(path.join(tmp, 'data1'));
   const entry = await runBuild(

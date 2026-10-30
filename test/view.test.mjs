@@ -40,22 +40,19 @@ test('composing shows the question and the box; building only the "Building" lin
   assert.deepEqual(shown('result'), ['result']);
 });
 
-test('the box stays during the estimate, the confirm card and the folder dialog', () => {
+test('the box stays during the estimate and the confirm card', () => {
   const status = (s) => ({ type: 'status', status: s });
-  assert.deepEqual(
-    walk('compose', [status('Estimating...'), status('Waiting for you to confirm'), status('Choose a folder for the project')]),
-    ['compose', 'compose', 'compose'],
-  );
-  // Cancel on the confirm card, a failed estimate, no folder picked.
+  assert.deepEqual(walk('compose', [status('Estimating...'), status('Waiting for you to confirm')]), ['compose', 'compose']);
+  // Cancel on the confirm card, a failed estimate, a stopped one.
   assert.deepEqual(walk('compose', [status('Ready'), status('The estimate failed'), status('Cancelled')]), ['compose', 'compose', 'compose']);
 });
 
-test('the box leaves once the folder is picked, and comes back on "Build something else"', () => {
+test('the box leaves on "Build it" as the folder is made, and comes back on "Build something else"', () => {
   const status = (s) => ({ type: 'status', status: s });
   // With files: they are copied first. The flow's own status words come between.
   assert.deepEqual(
     walk('compose', [
-      status('Choose a folder for the project'),
+      status('Creating the project folder'),
       status('Copying your files'),
       status('Building...'),
       { type: 'build-started' },
@@ -64,7 +61,7 @@ test('the box leaves once the folder is picked, and comes back on "Build somethi
       status('Ready'),
       { type: 'result-closed' },
     ]),
-    ['compose', 'building', 'building', 'building', 'building', 'result', 'result', 'compose'],
+    ['building', 'building', 'building', 'building', 'building', 'result', 'result', 'compose'],
   );
   // Without files; and the build-started event alone is enough too.
   assert.deepEqual(walk('compose', [status('Building...')]), ['building']);
@@ -81,8 +78,12 @@ test('a stopped, failed or timed-out build shows its result card first, then the
   }
 });
 
-test('the box comes straight back when no build ran (the files could not be copied)', () => {
+test('the box comes straight back when no build ran (the folder or the files could not be made)', () => {
   assert.deepEqual(walk('building', [{ type: 'status', status: 'Ready' }, { type: 'confirm-error' }]), ['building', 'compose']);
+  assert.deepEqual(
+    walk('compose', [{ type: 'status', status: 'Creating the project folder' }, { type: 'status', status: 'Ready' }, { type: 'confirm-error' }]),
+    ['building', 'building', 'compose'],
+  );
   // After a build, an error from confirm does not take the result card away.
   assert.equal(nextView('result', { type: 'confirm-error' }), 'result');
   assert.equal(nextView('compose', { type: 'confirm-error' }), 'compose');

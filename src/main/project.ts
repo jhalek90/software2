@@ -1,30 +1,50 @@
-// The project folder: must be new and empty, then gets a fresh git repo with one empty
-// commit, so every build starts from a clean repo. No Electron imports.
+// The project folder: always a new one, made by the app inside the projects folder from
+// Settings, then a fresh git repo with one empty commit, so every build starts from a
+// clean repo. No Electron imports.
 
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { numberedName } from './naming';
 
 export type FolderResult = { ok: true } | { ok: false; error: string };
 
-/** Checks that dir is an empty folder (creating it if it does not exist yet). */
-export function checkEmptyFolder(dir: string): FolderResult {
-  try {
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    if (!statSync(dir).isDirectory()) return { ok: false, error: `"${dir}" is not a folder.` };
-    const items = readdirSync(dir);
-    if (items.length > 0) {
-      const example = items.slice(0, 3).map((n) => `"${n}"`).join(', ');
-      return {
-        ok: false,
-        error:
-          `"${dir}" is not empty: it has ${items.length} item${items.length === 1 ? '' : 's'} (${example}${items.length > 3 ? ', ...' : ''}). ` +
-          'Pick or create a new, empty folder so the build starts from a clean repo.',
-      };
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: `Could not use "${dir}": ${(err as Error).message}` };
+export type NewFolderResult = { ok: true; folder: string } | { ok: false; error: string };
+
+/** How far name-2, name-3, ... go before giving up. */
+const MAX_TRIES = 999;
+
+/** The folder a new project called name would get in parent now: name, or name-2,
+ *  name-3, ... when taken. Only looks; createProjectFolder may still pick a later one. */
+export function plannedFolder(parent: string, name: string): string {
+  for (let n = 1; n <= MAX_TRIES; n++) {
+    const dir = path.join(path.resolve(parent), numberedName(name, n));
+    if (!existsSync(dir)) return dir;
   }
+  return path.join(path.resolve(parent), name);
+}
+
+/** Makes a new folder for the project in parent (made too if missing): name, or
+ *  name-2, name-3, ... when taken. Never reuses a folder that is already there, even an
+ *  empty one: each try is a plain mkdir, which fails if anything has that name. */
+export function createProjectFolder(parent: string, name: string): NewFolderResult {
+  const root = path.resolve(parent);
+  try {
+    mkdirSync(root, { recursive: true });
+  } catch (err) {
+    return { ok: false, error: `Could not create the projects folder "${root}": ${(err as Error).message}` };
+  }
+  for (let n = 1; n <= MAX_TRIES; n++) {
+    const dir = path.join(root, numberedName(name, n));
+    try {
+      mkdirSync(dir);
+      return { ok: true, folder: dir };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue;
+      return { ok: false, error: `Could not create "${dir}": ${(err as Error).message}` };
+    }
+  }
+  return { ok: false, error: `"${root}" already has ${MAX_TRIES} folders called ${name}. Clear some out or pick another projects folder in Settings.` };
 }
 
 /** git init in dir plus an empty first commit. Uses the user's git identity, or a
@@ -52,12 +72,6 @@ async function identity(dir: string): Promise<string[]> {
 export async function commitAll(dir: string, message: string): Promise<void> {
   await git(dir, ['add', '-A']);
   await git(dir, [...(await identity(dir)), 'commit', '-m', message]);
-}
-
-/** checkEmptyFolder, then initRepo. */
-export async function prepareProjectFolder(dir: string): Promise<FolderResult> {
-  const empty = checkEmptyFolder(dir);
-  return empty.ok ? initRepo(dir) : empty;
 }
 
 /** Runs git in cwd; resolves with stdout. */

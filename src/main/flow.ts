@@ -1,21 +1,21 @@
-// What happens after Go: estimate -> confirm -> folder -> build. The steps that need
-// Electron (dialogs, the window) come in as functions, so the tests run this under Node.
+// What happens after Go: estimate -> confirm -> new folder -> build. The folder is named
+// by the estimate (or from the request) and made in the projects folder from Settings;
+// nobody picks it. The steps that need Electron (the window, the build's log) come in as
+// functions, so the tests run this under Node.
 
+import { rmSync } from 'node:fs';
 import path from 'node:path';
 import { ASSETS_DIR, checkOptions, copyIntoAssets, type AdvancedOptions, type RunExtras } from './advanced';
 import type { BuildJob } from './build';
 import { startEstimate, type Estimate, type EstimateHandle, type EstimateOutcome } from './estimate';
-import { prepareProjectFolder } from './project';
+import { projectName } from './naming';
+import { createProjectFolder, initRepo, plannedFolder } from './project';
 import type { Settings } from './settings';
 
 export interface FlowDeps {
   settings(): Settings;
   log(kind: LogEntry['kind'], text: string): void;
   setStatus(text: string): void;
-  /** Native folder dialog opened at defaultPath. null: cancelled. */
-  pickFolder(defaultPath: string): Promise<string | null>;
-  /** Tells the user why a folder was refused. The picker opens again afterwards. */
-  refuseFolder(message: string): Promise<void>;
   /** The build step (#345). */
   build(job: BuildJob): Promise<void>;
   /** For tests: the estimate cap and extra env for the CLI. */
@@ -23,10 +23,11 @@ export interface FlowDeps {
   env?: Record<string, string | undefined>;
 }
 
-export type ConfirmOutcome =
-  | { status: 'built'; folder: string }
-  | { status: 'cancelled' }
-  | { status: 'error'; error: string };
+/** The estimate's outcome; on ok also the folder the project will be created in
+ *  (shown on the confirm card; a "-2" may still be added if it is taken by then). */
+export type GoOutcome = Exclude<EstimateOutcome, { status: 'ok' }> | { status: 'ok'; estimate: Estimate; folder: string };
+
+export type ConfirmOutcome = { status: 'built'; folder: string } | { status: 'error'; error: string };
 
 type State = 'idle' | 'estimating' | 'confirm' | 'folder' | 'building';
 
@@ -50,7 +51,7 @@ export class Flow {
 
   /** Step 1, with what was typed after "build me" and the Advanced panel's options.
    *  On ok the flow waits for confirm() or cancel(). */
-  async estimate(typed: string, options?: AdvancedOptions): Promise<EstimateOutcome> {
+  async estimate(typed: string, options?: AdvancedOptions): Promise<GoOutcome> {
     const text = buildMeRequest(typed);
     if (!text) return { status: 'error', error: 'Type what you want first.' };
     if (this.busy) return { status: 'error', error: 'Something is already running.' };
@@ -82,19 +83,22 @@ export class Flow {
     this.estimateRun = null;
 
     if (outcome.status === 'ok') {
-      this.pending = { request: text, estimate: outcome.estimate, extras };
+      const estimate = { ...outcome.estimate, name: projectName(outcome.estimate.name, text) };
+      this.pending = { request: text, estimate, extras };
       this.state = 'confirm';
-      log('info', `Estimate: about ${outcome.estimate.minutes} minutes.`);
+      const folder = plannedFolder(this.deps.settings().projectsFolder, estimate.name);
+      log('info', `Estimate: about ${estimate.minutes} minutes.`);
+      log('info', `Project name: ${estimate.name}${outcome.estimate.name ? '' : ' (from the request: the estimate had none)'}. Will be created in ${folder}`);
       setStatus('Waiting for you to confirm');
+      return { status: 'ok', estimate, folder };
+    }
+    this.state = 'idle';
+    if (outcome.status === 'stopped') {
+      log('info', 'Estimate stopped.');
+      setStatus('Cancelled');
     } else {
-      this.state = 'idle';
-      if (outcome.status === 'stopped') {
-        log('info', 'Estimate stopped.');
-        setStatus('Cancelled');
-      } else {
-        log('error', outcome.error);
-        setStatus('The estimate failed');
-      }
+      log('error', outcome.error);
+      setStatus('The estimate failed');
     }
     return outcome;
   }
@@ -113,31 +117,23 @@ export class Flow {
     this.deps.setStatus('Ready');
   }
 
-  /** "Build it": pick an empty folder, git init it, hand over to the build step. */
+  /** "Build it": make the project's new folder, git init it, hand over to the build step. */
   async confirm(): Promise<ConfirmOutcome> {
     if (this.state !== 'confirm' || !this.pending) return { status: 'error', error: 'There is no estimate to build.' };
     const { request, estimate, extras } = this.pending;
     const { log, setStatus } = this.deps;
     this.state = 'folder';
-    setStatus('Choose a folder for the project');
+    setStatus('Creating the project folder');
     try {
       const settings = this.deps.settings();
-      let folder: string | null = null;
-      for (;;) {
-        const picked = await this.deps.pickFolder(settings.projectsFolder);
-        if (!picked) break;
-        const prepared = await prepareProjectFolder(picked);
-        if (prepared.ok) {
-          folder = picked;
-          break;
-        }
-        log('error', prepared.error);
-        await this.deps.refuseFolder(prepared.error);
-      }
-      if (!folder) {
-        log('info', 'Cancelled: no folder chosen.');
-        setStatus('Ready');
-        return { status: 'cancelled' };
+      const created = createProjectFolder(settings.projectsFolder, estimate.name);
+      if (!created.ok) throw new Error(created.error);
+      const { folder } = created;
+      const repo = await initRepo(folder);
+      if (!repo.ok) {
+        // The folder was made just now and has nothing of anyone's in it.
+        rmSync(folder, { recursive: true, force: true, maxRetries: 2 });
+        throw new Error(repo.error);
       }
       log('info', `Project folder: ${folder} (new git repo with an empty first commit)`);
       let files: BuildJob['files'] = [];

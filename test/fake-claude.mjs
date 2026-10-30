@@ -24,6 +24,8 @@
 //   FAKE_CLAUDE_RESULT      the result text (default: a short canned answer)
 //   FAKE_CLAUDE_EXIT_CODE   exit code in normal and fail modes (default 0 / 1)
 //   FAKE_CLAUDE_PROMPT_FILE write the prompt it got to this file (tests read it back)
+//   FAKE_CLAUDE_NAME        the "name" in the canned estimate (default: none, so the app
+//                           names the project from the request)
 //   FAKE_CLAUDE_RUN         what the build leaves for "How to run it" (default: just the README)
 //     static:  index.html and a RUN.json that opens it
 //     command: a RUN.json with npm install, npm run dev and http://localhost:5173
@@ -81,6 +83,7 @@ async function main() {
   const sessionId = '00000000-0000-4000-8000-000000000000';
   const cannedEstimate = JSON.stringify({
     minutes: 2,
+    ...(env.FAKE_CLAUDE_NAME !== undefined ? { name: env.FAKE_CLAUDE_NAME } : {}),
     summary: 'A fake build that writes a README, for trying software2 without Claude.',
     stack: 'Plain text',
     steps: ['Write README.md', 'Commit it'],

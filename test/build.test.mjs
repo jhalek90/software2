@@ -145,6 +145,10 @@ test('the prompt file has the request word for word, the plan and the instructio
   assert.match(prompt, /README\.md/);
   assert.match(prompt, /tests, or a smoke run/);
   assert.match(prompt, /short summary/);
+  assert.match(prompt, /## How to run/, 'the README gets a "How to run" section (the fallback)');
+  assert.match(prompt, /write RUN\.json in the project root/);
+  assert.match(prompt, /"kind": "static", "open": "index\.html"/);
+  assert.match(prompt, /"kind": "command", "install": "npm install", "command": "npm run dev"/);
   assert.doesNotMatch(prompt.replace(request, ''), /\{\{\w+\}\}/);
   assert.match(prompt, /any command you need/);
 

@@ -12,13 +12,13 @@ const ctx = vm.createContext({});
 const src = readFileSync(new URL('../dist/renderer/examples.js', import.meta.url), 'utf8');
 // A top-level const is not a property of the context, so ask the script for it.
 const {
-  EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE, EXAMPLE_SPIN,
-  EXAMPLE_SLOTTED_EVERY, EXAMPLE_REEL_STAGGER, exampleCycler, exampleGenerator, fillExample,
-  fixArticles, spinFrames,
+  EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE,
+  EXAMPLE_SLOTTED_EVERY, EXAMPLE_REEL_WORDS, EXAMPLE_ROLL_MS, EXAMPLE_REEL_STAGGER_MS,
+  exampleCycler, exampleGenerator, exampleParts, fillExample, fixArticles, reelWords,
 } = vm.runInContext(
   `${src}\n({ EXAMPLES, EXAMPLE_SLOTS, EXAMPLE_NUMBER_SLOTS, EXAMPLE_MAX_LENGTH, EXAMPLE_PACE,
-    EXAMPLE_SPIN, EXAMPLE_SLOTTED_EVERY, EXAMPLE_REEL_STAGGER, exampleCycler, exampleGenerator,
-    fillExample, fixArticles, spinFrames });`,
+    EXAMPLE_SLOTTED_EVERY, EXAMPLE_REEL_WORDS, EXAMPLE_ROLL_MS, EXAMPLE_REEL_STAGGER_MS,
+    exampleCycler, exampleGenerator, exampleParts, fillExample, fixArticles, reelWords });`,
   ctx,
 );
 
@@ -145,28 +145,29 @@ test('a filled slot only ever takes a word from its own list', () => {
   }
 });
 
-test('a few thousand generated examples and their spins all follow the style rules, with no repeats', () => {
-  const patterns = new Map();
+test('a few thousand generated examples follow the style rules, with no repeats, and their reels fit', () => {
   for (const seed of [1, 7, 42, 2026]) {
     const next = exampleGenerator(EXAMPLES, EXAMPLE_SLOTS, seeded(seed));
     const recent = [];
     for (let i = 0; i < 1500; i++) {
-      const { entry, text, frames } = next();
+      const { entry, text, parts, reels } = next();
       const where = `seed ${seed}, example ${i}`;
       checkStyle(text, where);
       const slotted = entry.includes('{');
       assert.equal(slotted, (i + 1) % EXAMPLE_SLOTTED_EVERY === 0, `slots or not out of turn: ${entry} (${where})`);
-      if (slotted) {
-        if (!patterns.has(entry)) patterns.set(entry, fillingPattern(entry));
-        assert.equal(frames.length, EXAMPLE_SPIN.length + 1, `spin frames for: ${entry}`);
-        assert.equal(frames.at(-1), text, `the spin does not stop on the example: ${entry}`);
-        for (const frame of frames) {
-          checkStyle(frame, `a spin frame, ${where}`);
-          assert.match(frame, patterns.get(entry), `"${frame}" is not a filling of: ${entry}`);
-        }
-      } else {
-        assert.equal(frames.length, 0, `frames for an entry with no slots: ${entry}`);
-      }
+      // The fixed text and the slot words, taking turns, make up the example.
+      assert.equal(parts.join(''), text, `parts of: ${text}`);
+      const names = slotsOf(entry);
+      assert.equal(parts.length, 2 * names.length + 1, `parts of: ${text}`);
+      assert.equal(reels.length, names.length, `reels for: ${entry}`);
+      names.forEach((name, k) => {
+        const word = parts[2 * k + 1];
+        const reel = reels[k];
+        assert.ok(EXAMPLE_SLOTS[name].includes(word), `"${word}" is not a {${name}} word (${text})`);
+        assert.equal(reel.length, EXAMPLE_REEL_WORDS + 1, `reel length for {${name}}`);
+        assert.equal(reel.at(-1), word, `the reel for {${name}} does not land on "${word}"`);
+        for (const w of reel) assert.ok(EXAMPLE_SLOTS[name].includes(w), `"${w}" on the {${name}} reel`);
+      });
       assert.ok(!recent.includes(text), `"${text}" again within ${recent.length} (seed ${seed})`);
       recent.push(text);
       if (recent.length > 300) recent.shift();
@@ -214,9 +215,7 @@ test('the generator re-rolls a filling that is too long, and skips an entry that
   const next = exampleGenerator(['a {word} game', long, 'a short one'], slots, seeded(5));
   const shows = Array.from({ length: 30 }, () => next());
   const shown = shows.map((show) => show.text);
-  for (const text of [...shown, ...shows.flatMap((show) => show.frames)]) {
-    assert.ok(text.length <= EXAMPLE_MAX_LENGTH, text);
-  }
+  for (const text of shown) assert.ok(text.length <= EXAMPLE_MAX_LENGTH, text);
   assert.ok(shown.includes('a tiny game'));
   assert.ok(!shown.includes(long));
 });
@@ -262,35 +261,26 @@ test('a reshuffle that would repeat the last entry moves it out of the first slo
   for (let i = 1; i < shown.length; i++) assert.notEqual(shown[i], shown[i - 1], shown.join(', '));
 });
 
-test('a slot spin flicks by very fast, brakes, then the example stays for two seconds', () => {
-  const fast = EXAMPLE_SPIN.filter((gap) => gap === EXAMPLE_SPIN[0]);
-  assert.ok(1000 / EXAMPLE_SPIN[0] >= 12, `the fast part is ${(1000 / EXAMPLE_SPIN[0]).toFixed(1)} a second`);
-  assert.ok(fast.length >= EXAMPLE_SPIN.length / 2, 'most of the spin is the fast part');
-  for (let i = 1; i < EXAMPLE_SPIN.length; i++) {
-    assert.ok(EXAMPLE_SPIN[i] >= EXAMPLE_SPIN[i - 1], `the spin speeds up at step ${i}`);
-  }
-  const spinTime = EXAMPLE_SPIN.reduce((a, b) => a + b, 0);
-  assert.ok(spinTime >= 600 && spinTime <= 1500, `the spin lasts ${spinTime} ms`);
-  assert.equal(EXAMPLE_PACE, 2000);
+test('a new example every three seconds, its reels settled with time to read it', () => {
+  assert.equal(EXAMPLE_PACE, 3000);
+  const most = Math.max(...EXAMPLES.map((e) => slotsOf(e).length));
+  assert.ok(most <= 2, `an entry with ${most} slots`);
+  // The 350 ms fade in, then the last reel's roll; at least a second and a half to read it.
+  const settled = 350 + EXAMPLE_ROLL_MS + (most - 1) * EXAMPLE_REEL_STAGGER_MS;
+  assert.ok(EXAMPLE_PACE - settled >= 1500, `the example is settled ${settled} ms in`);
 });
 
-test('each reel shows a new word every frame until it stops, and the reels stop left to right', () => {
-  const slots = { a: ['p', 'q', 'r', 's'], b: ['w', 'x', 'y', 'z'] };
+test('a reel rolls past different words, never the same twice running, onto its word', () => {
   for (const seed of [1, 2, 3, 4, 5]) {
-    const frames = spinFrames('a {a} and {b} game', ['p', 'w'], slots, seeded(seed));
-    const last = EXAMPLE_SPIN.length;
-    assert.equal(frames.length, last + 1);
-    assert.equal(frames[last], 'a p and w game');
-    const reels = frames.map((frame) => frame.match(/^a (\w) and (\w) game$/).slice(1));
-    const firstStops = last - EXAMPLE_REEL_STAGGER;
-    for (let f = 0; f < last; f++) {
-      if (f >= firstStops) assert.equal(reels[f][0], 'p', `the first reel moves after it stopped (frame ${f})`);
-      if (f > 0 && f < firstStops) assert.notEqual(reels[f][0], reels[f - 1][0], `the first reel stuck at frame ${f}`);
-      if (f > 0) assert.notEqual(reels[f][1], reels[f - 1][1], `the second reel stuck at frame ${f}`);
-    }
+    const reel = reelWords('a', 'p', { a: ['p', 'q', 'r'] }, seeded(seed));
+    assert.equal(reel.length, EXAMPLE_REEL_WORDS + 1);
+    assert.equal(reel.at(-1), 'p');
+    for (let k = 1; k < reel.length; k++) assert.notEqual(reel[k], reel[k - 1], reel.join(' '));
   }
 });
 
-test('an entry with no slots does not spin', () => {
-  assert.deepEqual([...spinFrames('a plain one', [])], ['a plain one']);
+test('the parts of an example: fixed text and slot words in turn, articles fixed for the words', () => {
+  assert.deepEqual([...exampleParts('a {theme} themed snake game', ['ocean'])], ['an ', 'ocean', ' themed snake game']);
+  assert.deepEqual([...exampleParts('a {style} {theme} platformer', ['8-bit', 'jungle'])], ['an ', '8-bit', ' ', 'jungle', ' platformer']);
+  assert.deepEqual([...exampleParts('a plain one', [])], ['a plain one']);
 });

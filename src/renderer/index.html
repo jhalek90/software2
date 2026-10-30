@@ -50,7 +50,13 @@
       <form id="request-form" class="composer">
         <div class="sentence">
           <label id="lead" for="request" class="lead">build me</label>
-          <textarea id="request" rows="1" spellcheck="true" placeholder="a to-do list web page" aria-labelledby="hero lead" autofocus></textarea>
+          <!-- The example shown while the box is empty is drawn by #example over it, so its
+               slot words can roll into place; the textarea's own placeholder holds the same
+               text, unseen, for screen readers and the box's height. -->
+          <div class="request-stack">
+            <textarea id="request" rows="1" spellcheck="true" placeholder="a to-do list web page" aria-labelledby="hero lead" autofocus></textarea>
+            <div id="example" class="example" aria-hidden="true"></div>
+          </div>
         </div>
         <div class="composer-foot">
           <span id="hint" class="hint"><kbd>Enter</kbd> to build · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>

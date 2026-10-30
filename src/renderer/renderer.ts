@@ -38,26 +38,21 @@ window.api.onWindowState((state) => {
   backdrop.setMinimized(state.minimized);
 });
 
-// The placeholders cycle through a few examples while their boxes are empty: what to
-// build after "build me", and a design style in the Advanced panel.
+// The placeholders cycle through examples while their boxes are empty: what to build after
+// "build me" (examples.ts, shuffled each start), and a design style in the Advanced panel.
 
-const EXAMPLES = [
-  'a to-do list web page',
-  'a pomodoro timer',
-  'a markdown notes app',
-  'a CSV to JSON converter for the command line',
-  'a tiny expense tracker',
-];
+const nextExample = exampleCycler(EXAMPLES);
 const STYLES = ['dark and minimal', 'playful, pastel colours', 'like a 90s website', 'clean, lots of white space'];
-let example = 0;
+let style = 0;
+request.placeholder = nextExample();
 setInterval(() => {
   if (document.hidden) return;
   const boxes = [request, advStyle].filter((box) => !box.value);
   boxes.forEach((box) => box.classList.add('placeholder-out'));
   setTimeout(() => {
-    example++;
-    request.placeholder = EXAMPLES[example % EXAMPLES.length];
-    advStyle.placeholder = STYLES[example % STYLES.length];
+    style++;
+    request.placeholder = nextExample();
+    advStyle.placeholder = STYLES[style % STYLES.length];
     boxes.forEach((box) => box.classList.remove('placeholder-out'));
   }, 350);
 }, 4000);

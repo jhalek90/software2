@@ -39,42 +39,53 @@ window.api.onWindowState((state) => {
 });
 
 // The placeholders cycle through examples while their boxes are empty: what to build after
-// "build me" (examples.ts: shuffled each start, slots filled afresh, no repeats), which
-// spins through a few quickly every round (EXAMPLE_ROUND), and a design style in the
-// Advanced panel at a steady pace.
+// "build me" (examples.ts: shuffled each start, slots filled afresh, no repeats), where an
+// example's slot words spin and stop like a slot machine (EXAMPLE_SPIN) before it stays
+// for EXAMPLE_PACE, and a design style in the Advanced panel at a steadier pace.
 
-/** Puts the next placeholder in an empty box: at once, or fading the old one out first. */
-function swapPlaceholder(box: HTMLTextAreaElement | HTMLInputElement, next: () => string, fade: boolean): void {
-  if (document.hidden || box.value) return;
-  if (!fade) {
-    box.placeholder = next();
-    return;
-  }
+const PLACEHOLDER_FADE_MS = 350;
+const STYLE_PACE = 4000;
+
+/** Fades a box's placeholder out, puts in the new one and lets it fade back in. */
+function swapPlaceholder(box: HTMLTextAreaElement | HTMLInputElement, text: string): void {
   box.classList.add('placeholder-out');
   setTimeout(() => {
-    box.placeholder = next();
+    box.placeholder = text;
     box.classList.remove('placeholder-out');
-  }, 350);
+  }, PLACEHOLDER_FADE_MS);
 }
 
 const nextExample = exampleGenerator();
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-let exampleStep = 0;
-let exampleGap = reducedMotion.matches ? EXAMPLE_PACE : EXAMPLE_ROUND[0];
-request.placeholder = nextExample();
-/** Shows the next example and keeps it for its turn in the round. Only a change between
- *  two at the normal pace fades; the spin and its landing swap at once. */
-function flipExample(): void {
-  const gap = reducedMotion.matches ? EXAMPLE_PACE : EXAMPLE_ROUND[++exampleStep % EXAMPLE_ROUND.length];
-  swapPlaceholder(request, nextExample, exampleGap >= EXAMPLE_PACE && gap >= EXAMPLE_PACE);
-  exampleGap = gap;
-  setTimeout(flipExample, gap);
+/** Shows the next example: fades it in, spins its slot words as it does (not with reduced
+ *  motion), keeps it for EXAMPLE_PACE once they stop, then moves on. Nothing changes while
+ *  the window is hidden or the box has text, but the timing goes on. */
+function showExample(): void {
+  if (document.hidden || request.value) {
+    setTimeout(showExample, EXAMPLE_PACE);
+    return;
+  }
+  const { text, frames } = nextExample();
+  const shown = reducedMotion.matches || !frames.length ? [text] : frames;
+  swapPlaceholder(request, shown[0]);
+  let at = PLACEHOLDER_FADE_MS;
+  for (let i = 1; i < shown.length; i++) {
+    at += EXAMPLE_SPIN[i - 1];
+    const frame = shown[i];
+    setTimeout(() => {
+      request.placeholder = frame;
+    }, at);
+  }
+  setTimeout(showExample, at - PLACEHOLDER_FADE_MS + EXAMPLE_PACE);
 }
-setTimeout(flipExample, exampleGap);
+request.placeholder = '';
+showExample();
 
 const STYLES = ['dark and minimal', 'playful, pastel colours', 'like a 90s website', 'clean, lots of white space'];
 let style = 0;
-setInterval(() => swapPlaceholder(advStyle, () => STYLES[++style % STYLES.length], true), EXAMPLE_PACE);
+setInterval(() => {
+  if (!document.hidden && !advStyle.value) swapPlaceholder(advStyle, STYLES[++style % STYLES.length]);
+}, STYLE_PACE);
 
 // Advanced: this run's max run time, a design style and files for the project. The panel
 // is hidden whenever the app opens and nothing in it is saved. When anything is set, a
